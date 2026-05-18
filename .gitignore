@@ -1,0 +1,27 @@
+# IDE
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.vscode/
+
+# Logs
+*.log
+.backend.log
+.frontend.log
+
+# Build
+target/
+*.jar
+*.war
+*.ear
+
+# Claude
+.claude/
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db

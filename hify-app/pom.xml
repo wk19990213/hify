@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.hify</groupId>
+        <artifactId>hify</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>hify-app</artifactId>
+    <name>hify-app</name>
+    <description>应用启动模块</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- 各业务模块 -->
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-provider</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-agent</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-chat</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-mcp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-workflow</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-knowledge</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Logging -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-logging</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
