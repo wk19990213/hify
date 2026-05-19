@@ -137,3 +137,69 @@ CREATE TABLE IF NOT EXISTS chat_message (
     PRIMARY KEY (id),
     INDEX idx_session_created (session_id, deleted, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话消息';
+
+-- ----------------------------
+-- 8. 模型提供商（含 auth_config JSON 字段）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS provider (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
+    name            VARCHAR(100)    NOT NULL COMMENT '显示名称，如"OpenAI官方"',
+    code            VARCHAR(50)     NOT NULL COMMENT '唯一编码，如"openai-prod"',
+    type            VARCHAR(20)     NOT NULL COMMENT '类型：openai/anthropic/ollama/openai_compatible',
+    base_url        VARCHAR(500)    NOT NULL COMMENT 'API Base URL',
+    auth_config     JSON            NOT NULL COMMENT '鉴权配置JSON',
+    timeout_ms      INT             DEFAULT 30000 COMMENT '请求超时毫秒',
+    max_retries     TINYINT         DEFAULT 3 COMMENT '最大重试次数',
+    retry_interval_ms INT           DEFAULT 1000 COMMENT '重试间隔毫秒',
+    status          TINYINT         DEFAULT 1 COMMENT '0禁用 1启用 2故障',
+    sort_order      INT             DEFAULT 0 COMMENT '排序',
+    extra_config    JSON            NULL COMMENT '额外配置，如headers、代理等',
+    created_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted         TINYINT(1)      NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_code (code),
+    INDEX idx_type_status (type, status),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型提供商配置';
+
+-- ----------------------------
+-- 9. 模型配置（name 和 model_id 分开存储）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS model_config (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
+    provider_id     BIGINT          NOT NULL COMMENT '所属提供商 ID',
+    model_id        VARCHAR(100)    NOT NULL COMMENT '原始模型标识，如 gpt-4-turbo',
+    name            VARCHAR(100)    NOT NULL COMMENT '显示名称，如 GPT-4 Turbo',
+    code            VARCHAR(50)     NOT NULL COMMENT '唯一编码，如"gpt4t"',
+    capabilities    JSON            NULL COMMENT '能力配置JSON',
+    price_config    JSON            NULL COMMENT '计费配置JSON',
+    status          TINYINT         DEFAULT 1 COMMENT '0禁用 1启用 2 deprecated',
+    is_default      TINYINT(1)      DEFAULT 0 COMMENT '是否默认模型',
+    sort_order      INT             DEFAULT 0,
+    created_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted         TINYINT(1)      NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_provider_model (provider_id, model_id, deleted),
+    INDEX idx_provider_status (provider_id, status),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型配置';
+
+-- ----------------------------
+-- 10. 供应商健康状态（独立表）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS provider_health (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
+    provider_id     BIGINT          NOT NULL COMMENT '供应商 ID',
+    status          VARCHAR(20)     NOT NULL DEFAULT 'UNKNOWN' COMMENT 'HEALTHY/DEGRADED/UNHEALTHY/UNKNOWN',
+    fail_count      INT             DEFAULT 0 COMMENT '连续失败次数',
+    latency_ms      INT             DEFAULT NULL COMMENT '延迟毫秒',
+    last_success_at DATETIME(3)     DEFAULT NULL COMMENT '最后成功时间',
+    last_error_msg  VARCHAR(500)    DEFAULT NULL COMMENT '最后错误信息',
+    created_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    INDEX idx_provider_id (provider_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商健康状态';
