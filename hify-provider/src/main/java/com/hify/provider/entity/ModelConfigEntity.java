@@ -57,6 +57,16 @@ public class ModelConfigEntity extends BaseEntity {
     private Object configJson;
 
     /**
+     * 是否默认模型
+     */
+    private Integer isDefault;
+
+    /**
+     * 排序
+     */
+    private Integer sortOrder;
+
+    /**
      * 状态：0=禁用，1=启用
      */
     private Integer status;

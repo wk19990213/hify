@@ -150,6 +150,42 @@ public class LlmHttpClient {
         return builder.post(requestBody).build();
     }
 
+    /**
+     * 同步 GET 请求，返回响应体字符串
+     */
+    public String get(String url, Map<String, String> headers, int timeoutMs) {
+        long start = System.currentTimeMillis();
+        OkHttpClient client = this.syncClient.newBuilder()
+                .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
+                .build();
+        Request.Builder builder = new Request.Builder().url(url).get();
+        if (headers != null) {
+            headers.forEach(builder::addHeader);
+        }
+        Request request = builder.build();
+        try (Response response = client.newCall(request).execute()) {
+            long duration = System.currentTimeMillis() - start;
+            int status = response.code();
+            String responseBody = response.body() != null ? response.body().string() : "";
+            log.info("LLM GET {} -> {} ({}ms)", url, status, duration);
+
+            if (!response.isSuccessful()) {
+                throw mapException(status, responseBody);
+            }
+            return responseBody;
+        } catch (LlmApiException e) {
+            throw e;
+        } catch (SocketTimeoutException e) {
+            long duration = System.currentTimeMillis() - start;
+            log.error("LLM GET {} timeout ({}ms)", url, duration);
+            throw new LlmApiException(LlmApiException.TIMEOUT, "请求超时: " + url, e);
+        } catch (IOException e) {
+            long duration = System.currentTimeMillis() - start;
+            log.error("LLM GET {} failed ({}ms): {}", url, duration, e.getMessage());
+            throw new LlmApiException(LlmApiException.API_ERROR, "请求失败: " + e.getMessage(), e);
+        }
+    }
+
     private LlmApiException mapException(int status, String responseBody) {
         switch (status) {
             case 401:
