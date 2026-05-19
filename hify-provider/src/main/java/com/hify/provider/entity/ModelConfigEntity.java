@@ -12,7 +12,7 @@ import lombok.EqualsAndHashCode;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("model_config")
+@TableName(value = "model_config", autoResultMap = true)
 public class ModelConfigEntity extends BaseEntity {
 
     /**
