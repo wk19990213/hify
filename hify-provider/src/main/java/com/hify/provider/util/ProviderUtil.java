@@ -1,12 +1,12 @@
-package com.hify.chat.utils;
+package com.hify.provider.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Chat模块工具类
+ * Provider模块工具类
  */
 @Slf4j
 @Component
-public class ChatUtil {
+public class ProviderUtil {
 }

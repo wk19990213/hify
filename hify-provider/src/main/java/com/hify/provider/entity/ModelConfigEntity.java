@@ -15,59 +15,32 @@ import lombok.EqualsAndHashCode;
 @TableName(value = "model_config", autoResultMap = true)
 public class ModelConfigEntity extends BaseEntity {
 
-    /**
-     * 所属提供商 ID
-     */
+    /** 所属提供商 ID */
     private Long providerId;
 
-    /**
-     * 模型名称（原始模型标识，如 gpt-4、claude-3-opus）
-     */
-    private String modelName;
+    /** 原始模型标识，如 gpt-4-turbo */
+    private String modelId;
 
-    /**
-     * 展示名称
-     */
-    private String displayName;
+    /** 显示名称，如 GPT-4 Turbo */
+    private String name;
 
-    /**
-     * 模型类型：llm/embedding/rerank
-     */
-    private String modelType;
+    /** 唯一编码，如 gpt4t */
+    private String code;
 
-    /**
-     * 上下文窗口大小（token 数）
-     */
-    private Integer contextWindow;
-
-    /**
-     * 最大输出 token 数
-     */
-    private Integer maxTokens;
-
-    /**
-     * 是否支持流式：0=否，1=是
-     */
-    private Integer isStream;
-
-    /**
-     * 扩展配置（JSON）
-     */
+    /** 能力配置 JSON */
     @TableField(typeHandler = JacksonTypeHandler.class)
-    private Object configJson;
+    private Object capabilities;
 
-    /**
-     * 是否默认模型
-     */
+    /** 计费配置 JSON */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Object priceConfig;
+
+    /** 状态：0=禁用 1=启用 2=deprecated */
+    private Integer status;
+
+    /** 是否默认模型 */
     private Integer isDefault;
 
-    /**
-     * 排序
-     */
+    /** 排序 */
     private Integer sortOrder;
-
-    /**
-     * 状态：0=禁用，1=启用
-     */
-    private Integer status;
 }

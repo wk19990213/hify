@@ -1,60 +1,59 @@
 <template>
   <div class="provider-list-page">
-    <!-- 页面标题区 -->
     <div class="page-header">
       <div class="header-left">
         <h1 class="page-title">模型提供商管理</h1>
-        <p class="page-desc">管理接入的大模型提供商，包括 OpenAI、Claude、Gemini、Ollama 等</p>
+        <p class="page-desc">管理接入的大模型提供商，包括 OpenAI、Claude、Ollama 等</p>
       </div>
       <div class="header-right">
-        <el-button type="primary" size="large" :icon="Plus" @click="handleAdd">
-          新增提供商
-        </el-button>
+        <el-button type="primary" :icon="Plus" @click="handleAdd">新增提供商</el-button>
       </div>
     </div>
 
-    <!-- 列表区 -->
     <HifyTable
       ref="tableRef"
       :columns="columns"
-      :api="fetchProviderList"
+      :api="fetchList"
       :show-pagination="true"
-      :default-page-size="10"
       empty-text="暂无提供商数据"
     >
-      <!-- 类型列 -->
-      <template #type="{ value }">
-        <el-tag :type="getTypeTagType(value)" size="small">
-          {{ value }}
+      <template #type="{ row }">
+        <el-tag :type="typeTagType(row.type)" size="small">{{ typeLabel(row.type) }}</el-tag>
+      </template>
+
+      <template #status="{ row }">
+        <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="light">
+          {{ row.status === 1 ? '启用' : '禁用' }}
         </el-tag>
       </template>
 
-      <!-- 状态列 -->
-      <template #status="{ value }">
-        <el-tag :type="value === 1 ? 'success' : 'info'" size="small" effect="light">
-          {{ value === 1 ? '启用' : '禁用' }}
-        </el-tag>
+      <template #health="{ row }">
+        <template v-if="row.health">
+          <el-tag :type="healthTagType(row.health.status)" size="small">
+            {{ healthLabel(row.health.status) }}
+          </el-tag>
+          <span v-if="row.health.avgLatencyMs" class="health-latency">{{ row.health.avgLatencyMs }}ms</span>
+        </template>
+        <el-tag v-else type="info" size="small">未知</el-tag>
       </template>
 
-      <!-- 创建时间列 -->
-      <template #createdAt="{ value }">
-        {{ formatDateTime(value) }}
+      <template #modelCount="{ row }">
+        {{ row.modelCount }}
       </template>
 
-      <!-- 操作列 -->
+      <template #createdAt="{ row }">
+        {{ formatDateTime(row.createdAt) }}
+      </template>
+
       <template #action="{ row }">
         <div class="action-btns">
-          <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">
-            删除
-          </el-button>
+          <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+          <el-button type="warning" link :icon="Connection" @click="handleTestConnection(row)">测试</el-button>
+          <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
         </div>
       </template>
     </HifyTable>
 
-    <!-- 新增/编辑弹窗 -->
     <HifyFormDialog
       ref="dialogRef"
       :title="dialogTitle"
@@ -69,25 +68,25 @@
 
         <el-form-item label="类型" prop="type">
           <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
-            <el-option label="OpenAI" value="OpenAI" />
-            <el-option label="Claude" value="Claude" />
-            <el-option label="Gemini" value="Gemini" />
-            <el-option label="Ollama" value="Ollama" />
+            <el-option label="OpenAI" value="OPENAI" />
+            <el-option label="Anthropic" value="ANTHROPIC" />
+            <el-option label="Ollama" value="OLLAMA" />
+            <el-option label="OpenAI Compatible" value="OPENAI_COMPATIBLE" />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="API Key" prop="apiKey">
+        <el-form-item label="Base URL" prop="baseUrl">
+          <el-input v-model="form.baseUrl" placeholder="https://api.example.com/v1" clearable />
+        </el-form-item>
+
+        <el-form-item label="API Key">
           <el-input
-            v-model="form.apiKey"
+            v-model="form._apiKey"
             type="password"
             placeholder="请输入 API Key"
             show-password
             clearable
           />
-        </el-form-item>
-
-        <el-form-item label="Base URL" prop="baseUrl">
-          <el-input v-model="form.baseUrl" placeholder="https://api.example.com/v1" clearable />
         </el-form-item>
       </template>
     </HifyFormDialog>
@@ -96,241 +95,166 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import HifyTable, { type TableColumn, type PageResult } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
+import {
+  getProviderList,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  testConnection,
+} from '@/api/provider'
+import type { Provider, ProviderRequest, ProviderHealth } from '@/api/provider'
 
-// 提供商类型
-interface Provider {
-  id: number
-  name: string
-  type: 'OpenAI' | 'Claude' | 'Gemini' | 'Ollama'
-  apiKey: string
-  baseUrl: string
-  status: 0 | 1
-  createdAt: string
-  updatedAt: string
+// ── 类型标签映射 ──────────────────────────────────────
+
+const typeMap: Record<string, string> = {
+  OPENAI: '',
+  ANTHROPIC: 'warning',
+  OLLAMA: 'info',
+  OPENAI_COMPATIBLE: '',
 }
 
-// Mock 数据（5条）
-const mockProviders: Provider[] = [
-  {
-    id: 1,
-    name: 'OpenAI 官方',
-    type: 'OpenAI',
-    apiKey: 'sk-***********************',
-    baseUrl: 'https://api.openai.com/v1',
-    status: 1,
-    createdAt: '2024-01-15 09:30:00',
-    updatedAt: '2024-01-15 09:30:00'
-  },
-  {
-    id: 2,
-    name: 'Claude Anthropic',
-    type: 'Claude',
-    apiKey: 'sk-ant-********************',
-    baseUrl: 'https://api.anthropic.com',
-    status: 1,
-    createdAt: '2024-01-18 14:20:00',
-    updatedAt: '2024-01-18 14:20:00'
-  },
-  {
-    id: 3,
-    name: '本地 Ollama',
-    type: 'Ollama',
-    apiKey: '',
-    baseUrl: 'http://localhost:11434',
-    status: 1,
-    createdAt: '2024-02-01 10:00:00',
-    updatedAt: '2024-02-01 10:00:00'
-  },
-  {
-    id: 4,
-    name: 'Google Gemini',
-    type: 'Gemini',
-    apiKey: 'AIzaSy*******************',
-    baseUrl: 'https://generativelanguage.googleapis.com',
-    status: 0,
-    createdAt: '2024-02-10 16:45:00',
-    updatedAt: '2024-02-10 16:45:00'
-  },
-  {
-    id: 5,
-    name: 'Azure OpenAI',
-    type: 'OpenAI',
-    apiKey: '***********************',
-    baseUrl: 'https://my-resource.openai.azure.com',
-    status: 1,
-    createdAt: '2024-03-05 08:15:00',
-    updatedAt: '2024-03-05 08:15:00'
-  }
-]
+const typeLabelMap: Record<string, string> = {
+  OPENAI: 'OpenAI',
+  ANTHROPIC: 'Anthropic',
+  OLLAMA: 'Ollama',
+  OPENAI_COMPATIBLE: 'Compatible',
+}
 
-// 表格列配置
+const typeTagType = (t: string) => typeMap[t] || 'info'
+const typeLabel = (t: string) => typeLabelMap[t] || t
+
+// ── 健康状态映射 ──────────────────────────────────────
+
+const healthStatusMap: Record<string, { label: string; type: string }> = {
+  HEALTHY: { label: '正常', type: 'success' },
+  UNHEALTHY: { label: '故障', type: 'danger' },
+  DEGRADED: { label: '降级', type: 'warning' },
+  UNKNOWN: { label: '未知', type: 'info' },
+}
+
+const healthTagType = (status?: string) => healthStatusMap[status || 'UNKNOWN']?.type || 'info'
+const healthLabel = (status?: string) => healthStatusMap[status || 'UNKNOWN']?.label || '未知'
+
+// ── 表格列 ──────────────────────────────────────────
+
 const columns: TableColumn<Provider>[] = [
-  { prop: 'name', label: '名称', minWidth: 180 },
+  { prop: 'name', label: '名称', minWidth: 160 },
   { prop: 'type', label: '类型', width: 120, slot: 'type' },
-  { prop: 'baseUrl', label: 'Base URL', minWidth: 280 },
-  { prop: 'status', label: '状态', width: 100, slot: 'status', align: 'center' },
-  { prop: 'createdAt', label: '创建时间', width: 180, slot: 'createdAt' },
-  { prop: 'action', label: '操作', width: 150, slot: 'action', fixed: 'right', align: 'center' }
+  { prop: 'baseUrl', label: 'Base URL', minWidth: 240 },
+  { prop: 'health', label: '健康状态', width: 140, slot: 'health' },
+  { prop: 'modelCount', label: '模型数', width: 80, slot: 'modelCount', align: 'center' },
+  { prop: 'status', label: '状态', width: 80, slot: 'status', align: 'center' },
+  { prop: 'createdAt', label: '创建时间', width: 170, slot: 'createdAt' },
+  { prop: 'action', label: '操作', width: 200, slot: 'action', fixed: 'right', align: 'center' },
 ]
 
-// 表单校验规则
+// ── 表单校验规则 ─────────────────────────────────────
+
 const formRules = {
   name: [
     { required: true, message: '请输入提供商名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
+    { min: 2, max: 50, message: '长度 2 ~ 50 个字符', trigger: 'blur' },
   ],
-  type: [
-    { required: true, message: '请选择类型', trigger: 'change' }
-  ],
-  baseUrl: [
-    { required: true, message: '请输入 Base URL', trigger: 'blur' },
-    { type: 'url', message: '请输入正确的 URL', trigger: 'blur' }
-  ]
+  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
+  baseUrl: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
 }
 
-// 获取类型对应的标签样式
-const getTypeTagType = (type: string) => {
-  const typeMap: Record<string, string> = {
-    'OpenAI': 'success',
-    'Claude': 'warning',
-    'Gemini': 'primary',
-    'Ollama': 'info'
-  }
-  return typeMap[type] || 'info'
-}
+const fetchList = (params: any) => getProviderList(params)
 
-// 格式化日期时间
-const formatDateTime = (datetime: string) => {
-  if (!datetime) return '-'
-  const date = new Date(datetime)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).replace(/\//g, '-')
-}
+// ── 引用 ────────────────────────────────────────────
 
-// 模拟 API 请求
-const fetchProviderList = (params: any): Promise<PageResult<Provider>> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const { pageNum = 1, pageSize = 10 } = params
-      const start = (pageNum - 1) * pageSize
-      const end = start + pageSize
-      const list = mockProviders.slice(start, end)
-
-      resolve({
-        list,
-        total: mockProviders.length,
-        pageNum,
-        pageSize
-      })
-    }, 500) // 模拟网络延迟
-  })
-}
-
-// 引用
 const tableRef = ref<any>(null)
 const dialogRef = ref<any>(null)
 const { confirmDelete } = useConfirm()
 
-// 弹窗标题
 const dialogTitle = ref('新增提供商')
 
-// 编辑模式时更新标题
-const updateDialogTitle = (isEdit: boolean) => {
-  dialogTitle.value = isEdit ? '编辑提供商' : '新增提供商'
-}
+// ── 新增 ────────────────────────────────────────────
 
-// 新增
 const handleAdd = () => {
-  updateDialogTitle(false)
+  dialogTitle.value = '新增提供商'
   dialogRef.value?.open()
 }
 
-// 编辑
+// ── 编辑 ────────────────────────────────────────────
+
 const handleEdit = (row: Provider) => {
-  updateDialogTitle(true)
-  dialogRef.value?.open({ ...row })
+  dialogTitle.value = '编辑提供商'
+  // 从 authConfig 中提取 apiKey 供表单展示
+  const apiKey = row.authConfig?.apiKey || ''
+  dialogRef.value?.open({ ...row, _apiKey: apiKey })
 }
 
-// 删除
+// ── 删除 ────────────────────────────────────────────
+
 const handleDelete = async (row: Provider) => {
   try {
     await confirmDelete(
-      `确定要删除提供商 "${row.name}" 吗？删除后该提供商下的所有模型将无法使用。`,
-      () => {
-        // 模拟删除 API
-        return new Promise<void>((resolve) => {
-          setTimeout(() => {
-            const index = mockProviders.findIndex(p => p.id === row.id)
-            if (index > -1) {
-              mockProviders.splice(index, 1)
-            }
-            resolve()
-          }, 500)
-        })
-      },
-      {
-        title: '删除提供商',
-        successMessage: '删除成功'
-      }
+      `确定要删除提供商 "${row.name}" 吗？`,
+      () => deleteProvider(row.id),
+      { title: '删除提供商', successMessage: '删除成功' }
     )
-    // 刷新列表
     tableRef.value?.refresh(true)
   } catch {
-    // 用户取消或删除失败
+    // 取消或失败
   }
 }
 
-// 提交表单
-const handleSubmit = async (formData: Partial<Provider>, isEdit: boolean) => {
+// ── 连通性测试 ───────────────────────────────────────
+
+const handleTestConnection = async (row: Provider) => {
+  try {
+    const result = await testConnection(row.id)
+    if (result.success) {
+      notifySuccess(`连接成功，延迟 ${result.latencyMs}ms，${result.modelCount} 个模型可用`)
+    } else {
+      notifyError('连接失败', result.errorMessage || '未知错误')
+    }
+  } catch {
+    notifyError('测试失败', '请稍后重试')
+  }
+}
+
+// ── 提交表单 ────────────────────────────────────────
+
+const handleSubmit = async (formData: any, isEdit: boolean) => {
   try {
     dialogRef.value?.setLoading(true)
 
-    // 模拟提交 API
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        if (isEdit && formData.id) {
-          // 编辑
-          const index = mockProviders.findIndex(p => p.id === formData.id)
-          if (index > -1) {
-            mockProviders[index] = {
-              ...mockProviders[index],
-              ...formData,
-              updatedAt: new Date().toLocaleString('zh-CN').replace(/\//g, '-')
-            } as Provider
-          }
-        } else {
-          // 新增
-          const newProvider: Provider = {
-            ...formData,
-            id: mockProviders.length + 1,
-            status: 1,
-            createdAt: new Date().toLocaleString('zh-CN').replace(/\//g, '-'),
-            updatedAt: new Date().toLocaleString('zh-CN').replace(/\//g, '-')
-          } as Provider
-          mockProviders.unshift(newProvider)
-        }
-        resolve()
-      }, 800)
-    })
+    // 从 _apiKey 构造 authConfig
+    const { _apiKey, ...rest } = formData
+    const req: ProviderRequest = {
+      ...rest,
+      ...(_apiKey ? { authConfig: { apiKey: _apiKey } } : {}),
+    }
+
+    if (isEdit) {
+      await updateProvider(formData.id, req)
+    } else {
+      await createProvider(req)
+    }
 
     notifySuccess(isEdit ? '编辑成功' : '新增成功')
     dialogRef.value?.close()
     tableRef.value?.refresh(true)
-  } catch (error) {
+  } catch {
     notifyError('操作失败', '请稍后重试')
   } finally {
     dialogRef.value?.setLoading(false)
   }
+}
+
+// ── 工具函数 ────────────────────────────────────────
+
+const formatDateTime = (datetime: string) => {
+  if (!datetime) return '-'
+  const d = new Date(datetime)
+  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -373,21 +297,30 @@ const handleSubmit = async (formData: Partial<Provider>, isEdit: boolean) => {
 
 .action-btns {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
-/* 响应式 */
+.action-btns :deep(.el-button) {
+  white-space: nowrap;
+}
+
+.health-latency {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
   }
-
   .header-right {
     width: 100%;
   }
-
   .header-right :deep(.el-button) {
     width: 100%;
   }

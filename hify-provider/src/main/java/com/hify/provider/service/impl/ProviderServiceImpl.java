@@ -10,10 +10,8 @@ import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
 import com.hify.provider.constant.ProviderConstant;
 import com.hify.provider.dto.ConnectionTestResult;
-import com.hify.provider.dto.ProviderCreateReq;
-import com.hify.provider.dto.ProviderDetailResp;
-import com.hify.provider.dto.ProviderResp;
-import com.hify.provider.dto.ProviderUpdateReq;
+import com.hify.provider.dto.ProviderRequest;
+import com.hify.provider.dto.ProviderResponse;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
 import com.hify.provider.entity.ProviderHealthEntity;
@@ -48,7 +46,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final ObjectMapper objectMapper;
 
     @Override
-    public Long create(ProviderCreateReq req) {
+    public Long create(ProviderRequest req) {
         ProviderEntity entity = new ProviderEntity();
         BeanUtils.copyProperties(req, entity);
         if (entity.getCode() == null || entity.getCode().isBlank()) {
@@ -69,13 +67,16 @@ public class ProviderServiceImpl implements ProviderService {
         if (entity.getSortOrder() == null) {
             entity.setSortOrder(0);
         }
+        if (entity.getAuthConfig() == null) {
+            entity.setAuthConfig(new HashMap<>());
+        }
         providerMapper.insert(entity);
         return entity.getId();
     }
 
     @Override
-    public void update(ProviderUpdateReq req) {
-        ProviderEntity entity = providerMapper.selectById(req.getId());
+    public void update(Long id, ProviderRequest req) {
+        ProviderEntity entity = providerMapper.selectById(id);
         if (entity == null) {
             throw BizException.notFound("提供商不存在");
         }
@@ -99,16 +100,52 @@ public class ProviderServiceImpl implements ProviderService {
     }
 
     @Override
-    public ProviderResp getById(Long id) {
-        ProviderEntity entity = providerMapper.selectById(id);
-        if (entity == null) {
-            throw BizException.notFound("提供商不存在");
+    public PageResult<ProviderResponse> list(Integer page, Integer size) {
+        var pageParam = PageHelper.<ProviderEntity>toPage(page, size);
+        var wrapper = new LambdaQueryWrapper<ProviderEntity>()
+                .orderByAsc(ProviderEntity::getSortOrder)
+                .orderByDesc(ProviderEntity::getCreatedAt);
+        var pageResult = providerMapper.selectPage(pageParam, wrapper);
+
+        List<ProviderResponse> responses = pageResult.getRecords().stream()
+                .map(this::convertToResponse)
+                .toList();
+
+        // 批量填充：健康状态 + 模型数
+        List<Long> providerIds = responses.stream().map(ProviderResponse::getId).toList();
+        if (!providerIds.isEmpty()) {
+            var healthMap = providerHealthMapper.selectList(
+                            new LambdaQueryWrapper<ProviderHealthEntity>()
+                                    .in(ProviderHealthEntity::getProviderId, providerIds))
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            ProviderHealthEntity::getProviderId, h -> h, (a, b) -> a));
+
+            var modelCountMap = modelConfigMapper.selectList(
+                            new LambdaQueryWrapper<ModelConfigEntity>()
+                                    .in(ModelConfigEntity::getProviderId, providerIds)
+                                    .eq(ModelConfigEntity::getStatus, 1))
+                    .stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            ModelConfigEntity::getProviderId,
+                            java.util.stream.Collectors.counting()));
+
+            for (ProviderResponse resp : responses) {
+                resp.setHealth(healthMap.get(resp.getId()));
+                resp.setModelCount(modelCountMap.getOrDefault(resp.getId(), 0L).intValue());
+            }
         }
-        return convertToResp(entity);
+
+        return PageResult.ok(
+                responses,
+                pageResult.getTotal(),
+                pageResult.getCurrent(),
+                pageResult.getSize()
+        );
     }
 
     @Override
-    public ProviderDetailResp getDetail(Long id) {
+    public ProviderResponse getDetail(Long id) {
         ProviderEntity entity = providerMapper.selectById(id);
         if (entity == null) {
             throw BizException.notFound("提供商不存在");
@@ -125,26 +162,10 @@ public class ProviderServiceImpl implements ProviderService {
                         .eq(ProviderHealthEntity::getProviderId, id)
         );
 
-        ProviderDetailResp detail = new ProviderDetailResp();
-        detail.setProvider(convertToResp(entity));
-        detail.setModelConfigs(modelConfigs);
-        detail.setHealth(health);
-        return detail;
-    }
-
-    @Override
-    public PageResult<ProviderResp> list(Integer page, Integer size) {
-        var pageParam = PageHelper.<ProviderEntity>toPage(page, size);
-        var wrapper = new LambdaQueryWrapper<ProviderEntity>()
-                .orderByAsc(ProviderEntity::getSortOrder)
-                .orderByDesc(ProviderEntity::getCreatedAt);
-        var pageResult = providerMapper.selectPage(pageParam, wrapper);
-        return PageResult.ok(
-                pageResult.getRecords().stream().map(this::convertToResp).toList(),
-                pageResult.getTotal(),
-                pageResult.getCurrent(),
-                pageResult.getSize()
-        );
+        ProviderResponse resp = convertToResponse(entity);
+        resp.setModelConfigs(modelConfigs);
+        resp.setHealth(health);
+        return resp;
     }
 
     @Override
@@ -195,8 +216,8 @@ public class ProviderServiceImpl implements ProviderService {
         return result;
     }
 
-    private ProviderResp convertToResp(ProviderEntity entity) {
-        ProviderResp resp = new ProviderResp();
+    private ProviderResponse convertToResponse(ProviderEntity entity) {
+        ProviderResponse resp = new ProviderResponse();
         BeanUtils.copyProperties(entity, resp);
         return resp;
     }

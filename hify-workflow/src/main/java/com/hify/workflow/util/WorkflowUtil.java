@@ -1,4 +1,4 @@
-package com.hify.workflow.utils;
+package com.hify.workflow.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

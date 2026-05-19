@@ -50,7 +50,7 @@
     <!-- 分页 -->
     <div v-if="showPagination && total > 0" class="pagination-wrapper">
       <el-pagination
-        v-model:current-page="pageNum"
+        v-model:current-page="page"
         v-model:page-size="pageSize"
         :total="total"
         :page-sizes="pageSizes"
@@ -83,13 +83,13 @@ export interface TableColumn<T = any> {
 export interface PageResult<T> {
   list: T[]
   total: number
-  pageNum: number
+  page: number
   pageSize: number
 }
 
 // API 类型
 export type FetchApi<T> = (params: {
-  pageNum: number
+  page: number
   pageSize: number
   sortField?: string
   sortOrder?: string
@@ -134,7 +134,7 @@ defineSlots<{
 const loading = ref(false)
 const tableData = ref<T[]>([])
 const total = ref(0)
-const pageNum = ref(1)
+const page = ref(1)
 const pageSize = ref(props.defaultPageSize)
 const sortField = ref('')
 const sortOrder = ref('')
@@ -147,7 +147,7 @@ const fetchData = async () => {
   loading.value = true
   try {
     const params = {
-      pageNum: pageNum.value,
+      page: page.value,
       pageSize: pageSize.value,
       ...(sortField.value && {
         sortField: sortField.value,
@@ -173,20 +173,20 @@ const fetchData = async () => {
 // 刷新（暴露给外部）
 const refresh = (resetPage = false) => {
   if (resetPage) {
-    pageNum.value = 1
+    page.value = 1
   }
   fetchData()
 }
 
 // 分页事件
 const handlePageChange = (val: number) => {
-  pageNum.value = val
+  page.value = val
   fetchData()
 }
 
 const handleSizeChange = (val: number) => {
   pageSize.value = val
-  pageNum.value = 1
+  page.value = 1
   fetchData()
 }
 
@@ -213,7 +213,7 @@ defineExpose({
   tableData,
   total,
   loading,
-  pageNum,
+  page,
   pageSize
 })
 </script>

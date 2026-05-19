@@ -1,0 +1,14 @@
+# Prettier 配置（Markdown 专用）
+proseWrap: always        # 段落自动换行，保持可读性
+printWidth: 120          # 行宽
+tabWidth: 2              # 缩进宽度
+useTabs: false           # 使用空格缩进
+singleQuote: true        # 单引号（影响 markdown 中的代码块）
+trailingComma: all       # 尾逗号
+
+# Markdown 专属
+overrides:
+  - files: "*.md"
+    options:
+      parser: markdown
+      proseWrap: always

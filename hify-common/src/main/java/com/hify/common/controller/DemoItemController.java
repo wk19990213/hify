@@ -26,10 +26,10 @@ public class DemoItemController {
     private final DemoItemService demoItemService;
 
     @GetMapping
-    public PageResult<DemoItemResp> list(
+    public Result<PageResult<DemoItemResp>> list(
             @RequestParam(name = "page", defaultValue = "1") Integer page,
             @RequestParam(name = "pageSize", defaultValue = "20") Integer pageSize) {
-        return demoItemService.list(page, pageSize);
+        return Result.ok(demoItemService.list(page, pageSize));
     }
 
     @GetMapping("/{id}")

@@ -1,12 +1,12 @@
-package com.hify.agent.utils;
+package com.hify.knowledge.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Agent模块工具类
+ * Knowledge模块工具类
  */
 @Slf4j
 @Component
-public class AgentUtil {
+public class KnowledgeUtil {
 }

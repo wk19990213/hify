@@ -1,12 +1,12 @@
 package com.hify.agent.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.hify.agent.entity.AgentEntity;
+import com.hify.agent.entity.AgentToolEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * Agent Mapper
+ * Agent Tool Mapper
  */
 @Mapper
-public interface AgentMapper extends BaseMapper<AgentEntity> {
+public interface AgentToolMapper extends BaseMapper<AgentToolEntity> {
 }

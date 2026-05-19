@@ -2,15 +2,13 @@ package com.hify.provider.dto;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
- * 提供商响应
+ * 提供商请求（创建 / 更新共用）
  */
 @Data
-public class ProviderResp {
-
-    private Long id;
+public class ProviderRequest {
 
     private String name;
 
@@ -19,6 +17,8 @@ public class ProviderResp {
     private String type;
 
     private String baseUrl;
+
+    private Map<String, Object> authConfig;
 
     private Integer timeoutMs;
 
@@ -30,7 +30,5 @@ public class ProviderResp {
 
     private Integer sortOrder;
 
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
+    private Map<String, Object> extraConfig;
 }

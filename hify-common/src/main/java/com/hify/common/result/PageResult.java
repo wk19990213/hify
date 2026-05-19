@@ -1,55 +1,36 @@
 package com.hify.common.result;
 
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
 import java.util.List;
 
 /**
- * 分页响应结果
- *
- * @param <T> 数据类型
+ * 分页结果，字段对齐 CLAUDE.md 规范：list / total / page / pageSize
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-public class PageResult<T> extends Result<List<T>> implements Serializable {
+public class PageResult<T> implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /**
-     * 总记录数
-     */
+    /** 当前页数据 */
+    private List<T> list;
+
+    /** 总记录数 */
     private Long total;
 
-    /**
-     * 当前页码
-     */
+    /** 当前页码（从 1 开始） */
     private Long page;
 
-    /**
-     * 每页大小
-     */
-    private Long size;
+    /** 每页条数 */
+    private Long pageSize;
 
-    /**
-     * 成功响应（带分页数据）
-     */
-    public static <T> PageResult<T> ok(List<T> data, Long total, Long page, Long size) {
+    public static <T> PageResult<T> ok(List<T> list, Long total, Long page, Long pageSize) {
         PageResult<T> result = new PageResult<>();
-        result.setCode(200);
-        result.setMessage("success");
-        result.setData(data);
+        result.setList(list);
         result.setTotal(total);
         result.setPage(page);
-        result.setSize(size);
+        result.setPageSize(pageSize);
         return result;
-    }
-
-    /**
-     * 成功响应（带分页数据，page/size 为 Integer 类型）
-     */
-    public static <T> PageResult<T> ok(List<T> data, Long total, Integer page, Integer size) {
-        return ok(data, total, Long.valueOf(page), Long.valueOf(size));
     }
 }

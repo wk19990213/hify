@@ -2,10 +2,8 @@ package com.hify.provider.service;
 
 import com.hify.common.result.PageResult;
 import com.hify.provider.dto.ConnectionTestResult;
-import com.hify.provider.dto.ProviderCreateReq;
-import com.hify.provider.dto.ProviderDetailResp;
-import com.hify.provider.dto.ProviderResp;
-import com.hify.provider.dto.ProviderUpdateReq;
+import com.hify.provider.dto.ProviderRequest;
+import com.hify.provider.dto.ProviderResponse;
 
 import java.util.Map;
 
@@ -17,12 +15,12 @@ public interface ProviderService {
     /**
      * 创建提供商
      */
-    Long create(ProviderCreateReq req);
+    Long create(ProviderRequest req);
 
     /**
      * 更新提供商
      */
-    void update(ProviderUpdateReq req);
+    void update(Long id, ProviderRequest req);
 
     /**
      * 删除提供商（逻辑删除）
@@ -30,19 +28,14 @@ public interface ProviderService {
     void delete(Long id);
 
     /**
-     * 根据 ID 查询
-     */
-    ProviderResp getById(Long id);
-
-    /**
-     * 查询详情（含模型配置和健康状态）
-     */
-    ProviderDetailResp getDetail(Long id);
-
-    /**
      * 分页列表
      */
-    PageResult<ProviderResp> list(Integer page, Integer size);
+    PageResult<ProviderResponse> list(Integer page, Integer size);
+
+    /**
+     * 查看详情（含模型配置和健康状态）
+     */
+    ProviderResponse getDetail(Long id);
 
     /**
      * 测试提供商连通性（通过配置参数）

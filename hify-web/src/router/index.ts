@@ -26,7 +26,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/agent',
     name: 'Agent',
-    component: () => import('@/views/AgentList.vue'),
+    component: () => import('@/views/agent/AgentList.vue'),
     meta: { title: 'Agent 管理' }
   },
   {

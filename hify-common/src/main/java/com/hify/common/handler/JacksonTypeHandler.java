@@ -2,6 +2,8 @@ package com.hify.common.handler;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.enums.ErrorCode;
+import com.hify.common.exception.BizException;
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;
 
@@ -22,7 +24,7 @@ public class JacksonTypeHandler extends BaseTypeHandler<Object> {
         try {
             ps.setString(i, OBJECT_MAPPER.writeValueAsString(parameter));
         } catch (Exception e) {
-            throw new RuntimeException("JSON serialize error", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "JSON serialize error", e);
         }
     }
 
@@ -48,7 +50,7 @@ public class JacksonTypeHandler extends BaseTypeHandler<Object> {
         try {
             return OBJECT_MAPPER.readValue(json, new TypeReference<>() {});
         } catch (Exception e) {
-            throw new RuntimeException("JSON parse error: " + json, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "JSON parse error: " + json, e);
         }
     }
 }

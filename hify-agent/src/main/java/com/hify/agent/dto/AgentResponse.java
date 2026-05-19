@@ -1,19 +1,21 @@
-package com.hify.agent.entity;
+package com.hify.agent.dto;
 
-import com.baomidou.mybatisplus.annotation.TableName;
-import com.hify.common.entity.BaseEntity;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
- * Agent 配置实体
+ * Agent 响应（列表 / 详情共用）
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("agent")
-public class AgentEntity extends BaseEntity {
+public class AgentResponse {
+
+    /**
+     * ID
+     */
+    private Long id;
 
     /**
      * Agent 名称
@@ -34,6 +36,11 @@ public class AgentEntity extends BaseEntity {
      * 模型配置 ID
      */
     private Long modelConfigId;
+
+    /**
+     * 模型配置名称（列表接口填充）
+     */
+    private String modelConfigName;
 
     /**
      * 系统提示词
@@ -59,4 +66,24 @@ public class AgentEntity extends BaseEntity {
      * 排序
      */
     private Integer sortOrder;
+
+    /**
+     * 绑定工具列表（仅详情接口填充）
+     */
+    private List<AgentToolResponse> tools;
+
+    /**
+     * 工具数量（列表接口填充）
+     */
+    private int toolCount;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createdAt;
+
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updatedAt;
 }

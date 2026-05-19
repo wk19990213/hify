@@ -1,19 +1,15 @@
-package com.hify.agent.entity;
+package com.hify.agent.dto;
 
-import com.baomidou.mybatisplus.annotation.TableName;
-import com.hify.common.entity.BaseEntity;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
- * Agent 配置实体
+ * Agent 请求（创建 / 更新共用）
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("agent")
-public class AgentEntity extends BaseEntity {
+public class AgentRequest {
 
     /**
      * Agent 名称
@@ -21,7 +17,7 @@ public class AgentEntity extends BaseEntity {
     private String name;
 
     /**
-     * 唯一编码
+     * 唯一编码（创建时必填，更新时可选）
      */
     private String code;
 
@@ -46,7 +42,7 @@ public class AgentEntity extends BaseEntity {
     private Integer conversationMaxRounds;
 
     /**
-     * 温度参数
+     * 温度参数（0-2）
      */
     private BigDecimal temperature;
 
@@ -59,4 +55,9 @@ public class AgentEntity extends BaseEntity {
      * 排序
      */
     private Integer sortOrder;
+
+    /**
+     * 绑定工具列表
+     */
+    private List<AgentToolRequest> tools;
 }

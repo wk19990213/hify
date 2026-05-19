@@ -1,12 +1,12 @@
-package com.hify.provider.utils;
+package com.hify.agent.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Provider模块工具类
+ * Agent模块工具类
  */
 @Slf4j
 @Component
-public class ProviderUtil {
+public class AgentUtil {
 }

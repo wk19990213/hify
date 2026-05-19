@@ -1,12 +1,12 @@
-package com.hify.knowledge.utils;
+package com.hify.mcp.util;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Knowledge模块工具类
+ * Mcp模块工具类
  */
 @Slf4j
 @Component
-public class KnowledgeUtil {
+public class McpUtil {
 }
