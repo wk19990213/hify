@@ -57,6 +57,8 @@ public class AgentResponse {
      */
     private BigDecimal temperature;
 
+    private Long kbId;
+
     /**
      * 状态：0=禁用，1=启用
      */

@@ -215,6 +215,7 @@ const handleTestConnection = async (row: Provider) => {
     } else {
       notifyError('连接失败', result.errorMessage || '未知错误')
     }
+    tableRef.value?.refresh()
   } catch {
     notifyError('测试失败', '请稍后重试')
   }

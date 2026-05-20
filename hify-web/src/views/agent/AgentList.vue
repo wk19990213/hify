@@ -86,6 +86,17 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="知识库">
+          <el-select v-model="form.kbId" placeholder="请选择知识库（可选）" style="width: 100%" clearable>
+            <el-option
+              v-for="item in kbOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="系统提示词">
           <el-input
             v-model="form.systemPrompt"
@@ -120,12 +131,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Plus, Edit, Delete, ChatDotRound } from '@element-plus/icons-vue'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
+import { get } from '@/utils/request'
 import {
   getAgentList,
   createAgent,
@@ -170,8 +182,19 @@ const { confirmDelete } = useConfirm()
 
 const dialogTitle = ref('新增 Agent')
 
-// ── 模型选项（从 provider API 获取）──
+// ── 模型选项（从 /v1/model-configs 获取）──
 const modelOptions = ref<{ id: number; name: string }[]>([])
+const kbOptions = ref<{ id: number; name: string }[]>([])
+
+onMounted(async () => {
+  try {
+    modelOptions.value = await get<{ id: number; name: string }[]>('/v1/providers/model-configs')
+    const kbRes = await get<{ list: { id: number; name: string }[] }>('/v1/knowledge/bases')
+    kbOptions.value = kbRes.list || []
+  } catch {
+    // 获取选项失败，下拉框为空
+  }
+})
 
 // ── 新增 ────────────────────────────────────────────
 
@@ -196,6 +219,7 @@ const handleEdit = (row: Agent) => {
     code: row.code,
     description: row.description,
     modelConfigId: row.modelConfigId,
+    kbId: row.kbId,
     systemPrompt: row.systemPrompt,
     temperature: row.temperature,
     conversationMaxRounds: row.conversationMaxRounds,
@@ -237,6 +261,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
       code: formData.code,
       description: formData.description,
       modelConfigId: formData.modelConfigId,
+      kbId: formData.kbId,
       systemPrompt: formData.systemPrompt,
       temperature: formData.temperature,
       conversationMaxRounds: formData.conversationMaxRounds,

@@ -1,9 +1,7 @@
 package com.hify.provider.entity;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hify.common.entity.BaseEntity;
-import com.hify.common.handler.JacksonTypeHandler;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,7 +10,7 @@ import lombok.EqualsAndHashCode;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName(value = "provider", autoResultMap = true)
+@TableName("provider")
 public class ProviderEntity extends BaseEntity {
 
     private String name;
@@ -23,8 +21,7 @@ public class ProviderEntity extends BaseEntity {
 
     private String baseUrl;
 
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private Object authConfig;
+    private String authConfig;
 
     private Integer timeoutMs;
 
@@ -36,6 +33,5 @@ public class ProviderEntity extends BaseEntity {
 
     private Integer sortOrder;
 
-    @TableField(typeHandler = JacksonTypeHandler.class)
     private Object extraConfig;
 }

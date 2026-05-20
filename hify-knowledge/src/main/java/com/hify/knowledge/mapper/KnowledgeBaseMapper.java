@@ -1,11 +1,8 @@
 package com.hify.knowledge.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.hify.knowledge.entity.KnowledgeBaseEntity;
 import org.apache.ibatis.annotations.Mapper;
 
-/**
- * 知识库Mapper
- */
 @Mapper
-public interface KnowledgeMapper extends BaseMapper<Object> {
-}
+public interface KnowledgeBaseMapper extends BaseMapper<KnowledgeBaseEntity> {}

@@ -14,6 +14,10 @@ import com.hify.agent.service.AgentService;
 import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
+import com.hify.mcp.entity.McpServerEntity;
+import com.hify.mcp.mapper.McpServerMapper;
+import com.hify.provider.entity.ModelConfigEntity;
+import com.hify.provider.mapper.ModelConfigMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -23,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -40,6 +45,8 @@ public class AgentServiceImpl implements AgentService {
 
     private final AgentMapper agentMapper;
     private final AgentToolMapper agentToolMapper;
+    private final ModelConfigMapper modelConfigMapper;
+    private final McpServerMapper mcpServerMapper;
 
     @Override
     @Transactional
@@ -113,6 +120,7 @@ public class AgentServiceImpl implements AgentService {
         Optional.ofNullable(req.getCode()).ifPresent(entity::setCode);
         Optional.ofNullable(req.getDescription()).ifPresent(entity::setDescription);
         Optional.ofNullable(req.getModelConfigId()).ifPresent(entity::setModelConfigId);
+        Optional.ofNullable(req.getKbId()).ifPresent(entity::setKbId);
         Optional.ofNullable(req.getSystemPrompt()).ifPresent(entity::setSystemPrompt);
         Optional.ofNullable(req.getConversationMaxRounds()).ifPresent(entity::setConversationMaxRounds);
         Optional.ofNullable(req.getTemperature()).ifPresent(entity::setTemperature);
@@ -165,11 +173,31 @@ public class AgentServiceImpl implements AgentService {
                 .map(this::convertToResponse)
                 .toList();
 
-        // 批量填充：工具数量
+        // 批量填充：模型配置名称 + 工具数量
         List<Long> agentIds = responses.stream()
                 .map(AgentResponse::getId)
                 .toList();
         if (!agentIds.isEmpty()) {
+            // 填充 modelConfigName
+            List<Long> modelConfigIds = responses.stream()
+                    .map(AgentResponse::getModelConfigId)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .toList();
+            if (!modelConfigIds.isEmpty()) {
+                var modelNameMap = modelConfigMapper.selectList(
+                                new LambdaQueryWrapper<ModelConfigEntity>()
+                                        .in(ModelConfigEntity::getId, modelConfigIds)
+                                        .select(ModelConfigEntity::getId, ModelConfigEntity::getName))
+                        .stream()
+                        .collect(Collectors.toMap(ModelConfigEntity::getId, ModelConfigEntity::getName, (a, b) -> a));
+                for (AgentResponse resp : responses) {
+                    if (resp.getModelConfigId() != null) {
+                        resp.setModelConfigName(modelNameMap.get(resp.getModelConfigId()));
+                    }
+                }
+            }
+
             var toolCountMap = agentToolMapper.selectList(
                             new LambdaQueryWrapper<AgentToolEntity>()
                                     .in(AgentToolEntity::getAgentId, agentIds))
@@ -207,8 +235,31 @@ public class AgentServiceImpl implements AgentService {
                         .orderByAsc(AgentToolEntity::getSortOrder)
         );
 
+        // 批量填充 MCP 服务名称
+        List<Long> mcpServerIds = toolEntities.stream()
+                .map(AgentToolEntity::getMcpServerId)
+                .filter(mid -> mid != null)
+                .distinct()
+                .toList();
+        Map<Long, String> mcpNameMap = Collections.emptyMap();
+        if (!mcpServerIds.isEmpty()) {
+            mcpNameMap = mcpServerMapper.selectList(
+                            new LambdaQueryWrapper<McpServerEntity>()
+                                    .in(McpServerEntity::getId, mcpServerIds)
+                                    .select(McpServerEntity::getId, McpServerEntity::getName))
+                    .stream()
+                    .collect(Collectors.toMap(McpServerEntity::getId, McpServerEntity::getName, (a, b) -> a));
+        }
+        final Map<Long, String> nameMap = mcpNameMap;
+
         List<AgentToolResponse> tools = toolEntities.stream()
-                .map(this::convertToolToResponse)
+                .map(t -> {
+                    AgentToolResponse tr = convertToolToResponse(t);
+                    if (t.getMcpServerId() != null) {
+                        tr.setMcpServerName(nameMap.get(t.getMcpServerId()));
+                    }
+                    return tr;
+                })
                 .toList();
 
         resp.setTools(tools);
@@ -217,7 +268,7 @@ public class AgentServiceImpl implements AgentService {
     }
 
     @Override
-    public List<AgentResponse> getAgentTools(Long agentId) {
+    public List<AgentToolResponse> getAgentTools(Long agentId) {
         AgentEntity entity = agentMapper.selectById(agentId);
         if (entity == null || entity.getDeleted() == 1) {
             throw BizException.notFound("Agent 不存在");
@@ -229,11 +280,6 @@ public class AgentServiceImpl implements AgentService {
                                 .orderByAsc(AgentToolEntity::getSortOrder))
                 .stream()
                 .map(this::convertToolToResponse)
-                .map(tool -> {
-                    AgentResponse resp = new AgentResponse();
-                    resp.setId(tool.getId());
-                    return resp;
-                })
                 .toList();
     }
 

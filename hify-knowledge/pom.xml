@@ -23,12 +23,39 @@
             <artifactId>hify-common</artifactId>
         </dependency>
 
-        <!-- 向量数据库支持 (后续可添加) -->
-        <!-- <dependency> -->
-        <!--     <groupId>io.milvus</groupId> -->
-        <!--     <artifactId>milvus-sdk-java</artifactId> -->
-        <!--     <version>2.3.4</version> -->
-        <!-- </dependency> -->
+        <!-- Provider 模块（调用 LLM） -->
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-provider</artifactId>
+        </dependency>
+
+        <!-- 向量数据库支持 (Milvus Lite) -->
+        <dependency>
+            <groupId>io.milvus</groupId>
+            <artifactId>milvus-sdk-java</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+
+        <!-- PDF解析 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <!-- POI (Word/Excel) -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <!-- jsoup (网页解析) -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
 
         <!-- 测试 -->
         <dependency>

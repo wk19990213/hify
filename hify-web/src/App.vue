@@ -37,7 +37,6 @@
             <component :is="item.icon" />
           </el-icon>
           <span class="menu-label" v-show="!isCollapsed">{{ item.label }}</span>
-          <div v-if="item.badge && !isCollapsed" class="menu-badge">{{ item.badge }}</div>
         </router-link>
       </nav>
 
@@ -73,6 +72,7 @@ import { useRoute } from 'vue-router'
 import {
   Setting,
   User,
+  Document,
   ChatDotRound,
   Fold,
   Expand
@@ -90,7 +90,8 @@ const toggleCollapse = () => {
 const menuItems = [
   { path: '/provider', label: '模型管理', icon: Setting },
   { path: '/agent', label: 'Agent 管理', icon: User },
-  { path: '/chat', label: '对话', icon: ChatDotRound, badge: '3' },
+  { path: '/knowledge', label: '知识库', icon: Document },
+  { path: '/chat', label: '对话', icon: ChatDotRound },
 ]
 </script>
 

@@ -1,5 +1,6 @@
 package com.hify.provider.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.util.Map;
@@ -10,12 +11,15 @@ import java.util.Map;
 @Data
 public class ProviderRequest {
 
+    @NotBlank(message = "名称不能为空")
     private String name;
 
     private String code;
 
+    @NotBlank(message = "类型不能为空")
     private String type;
 
+    @NotBlank(message = "Base URL 不能为空")
     private String baseUrl;
 
     private Map<String, Object> authConfig;

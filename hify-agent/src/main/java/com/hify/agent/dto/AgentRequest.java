@@ -49,6 +49,8 @@ public class AgentRequest {
     /**
      * 状态：0=禁用，1=启用
      */
+    private Long kbId;
+
     private Integer status;
 
     /**

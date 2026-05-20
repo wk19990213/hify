@@ -5,6 +5,8 @@ import com.hify.agent.dto.AgentRequest;
 import com.hify.agent.dto.AgentResponse;
 import com.hify.common.result.PageResult;
 
+import com.hify.agent.dto.AgentToolResponse;
+
 import java.util.List;
 
 /**
@@ -40,7 +42,7 @@ public interface AgentService {
     /**
      * 获取 Agent 绑定的工具列表
      */
-    List<AgentResponse> getAgentTools(Long agentId);
+    List<AgentToolResponse> getAgentTools(Long agentId);
 
     /**
      * 批量更新 Agent 状态

@@ -34,7 +34,7 @@ public class LlmHttpClient {
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(
                 msg -> log.debug("OkHttp: {}", msg)
         );
-        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.HEADERS);
+        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
 
         this.syncClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -82,14 +82,16 @@ public class LlmHttpClient {
     }
 
     /**
-     * 流式 SSE POST 请求，通过回调逐行返回
+     * 流式 SSE POST 请求，通过回调逐行返回。
+     * @return OkHttp Call，外部可调用 cancel() 终止请求
      */
-    public void stream(String url, Map<String, String> headers, String body, StreamCallback callback) {
+    public Call stream(String url, Map<String, String> headers, String body, StreamCallback callback) {
         long start = System.currentTimeMillis();
         Request request = buildRequest(url, headers, body);
-        streamClient.newCall(request).enqueue(new Callback() {
+        Call call = streamClient.newCall(request);
+        call.enqueue(new Callback() {
             @Override
-            public void onFailure(Call call, IOException e) {
+            public void onFailure(Call c, IOException e) {
                 long duration = System.currentTimeMillis() - start;
                 if (e instanceof SocketTimeoutException) {
                     log.error("SSE stream {} timeout ({}ms)", url, duration);
@@ -137,6 +139,7 @@ public class LlmHttpClient {
                 }
             }
         });
+        return call;
     }
 
     private Request buildRequest(String url, Map<String, String> headers, String body) {

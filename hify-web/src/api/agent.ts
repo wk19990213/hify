@@ -30,6 +30,7 @@ export interface Agent {
   code: string
   description: string
   modelConfigId?: number
+  kbId?: number
   modelConfigName?: string
   systemPrompt?: string
   conversationMaxRounds: number
@@ -48,6 +49,7 @@ export interface AgentRequest {
   code?: string
   description?: string
   modelConfigId?: number
+  kbId?: number
   systemPrompt?: string
   conversationMaxRounds?: number
   temperature?: number
