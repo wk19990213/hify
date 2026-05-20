@@ -5,6 +5,7 @@ import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.entity.ProviderEntity;
 import okhttp3.Call;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -44,4 +45,7 @@ public interface ProviderAdapter {
 
     /** 从同步响应中提取文本内容 */
     String extractContent(String responseBody);
+
+    /** 获取可用模型 ID 列表 */
+    List<String> listModelIds(String baseUrl, Map<String, Object> authConfig);
 }

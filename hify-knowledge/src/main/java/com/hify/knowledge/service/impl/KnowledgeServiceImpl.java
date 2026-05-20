@@ -13,8 +13,10 @@ import com.hify.knowledge.service.*;
 import com.hify.provider.adapter.*;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
+import com.hify.provider.entity.ProviderModelEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderMapper;
+import com.hify.provider.mapper.ProviderModelMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -41,6 +43,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final EmbeddingService embeddingService;
     private final ProviderMapper providerMapper;
     private final ModelConfigMapper modelConfigMapper;
+    private final ProviderModelMapper providerModelMapper;
     private final ProviderAdapterFactory adapterFactory;
     private final ObjectMapper objectMapper;
 
@@ -167,19 +170,26 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 "你是一个知识库助手。请根据以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知。\n\n参考资料：\n%s\n\n用户问题：%s\n\n回答：",
                 context, question);
 
-        List<ProviderEntity> providers = providerMapper.selectList(new LambdaQueryWrapper<ProviderEntity>()
-                .eq(ProviderEntity::getStatus, 1).eq(ProviderEntity::getDeleted, 0));
-        // 遍历找到第一个有模型配置的 provider
+        // 查找有可用提供商的模型配置
+        List<ModelConfigEntity> models = modelConfigMapper.selectList(
+                new LambdaQueryWrapper<ModelConfigEntity>()
+                        .eq(ModelConfigEntity::getStatus, 1)
+                        .eq(ModelConfigEntity::getDeleted, 0)
+                        .gt(ModelConfigEntity::getProviderCount, 0)
+                        .last("LIMIT 1"));
         ProviderEntity provider = null;
-        ModelConfigEntity modelConfig = null;
-        for (ProviderEntity p : providers) {
-            var models = modelConfigMapper.selectList(new LambdaQueryWrapper<ModelConfigEntity>()
-                    .eq(ModelConfigEntity::getProviderId, p.getId())
-                    .eq(ModelConfigEntity::getStatus, 1).last("LIMIT 1"));
-            if (!models.isEmpty()) {
-                provider = p;
-                modelConfig = models.get(0);
-                break;
+        ModelConfigEntity modelConfig = models.isEmpty() ? null : models.get(0);
+        if (modelConfig != null) {
+            // 通过 provider_model 查找可用 Provider
+            List<ProviderModelEntity> pmList = providerModelMapper.selectList(
+                    new LambdaQueryWrapper<ProviderModelEntity>()
+                            .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
+            for (ProviderModelEntity pm : pmList) {
+                ProviderEntity p = providerMapper.selectById(pm.getProviderId());
+                if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
+                    provider = p;
+                    break;
+                }
             }
         }
         if (provider == null) throw BizException.paramError("没有可用的 LLM Provider");

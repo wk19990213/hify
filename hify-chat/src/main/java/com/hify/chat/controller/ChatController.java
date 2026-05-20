@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +32,16 @@ public class ChatController {
         return Result.ok(chatService.createSession(agentId, title));
     }
 
+    @GetMapping("/sessions")
+    public Result<List<ChatSessionResp>> listSessions(@RequestParam("agentId") Long agentId) {
+        return Result.ok(chatService.listAgentSessions(agentId));
+    }
+
+    @GetMapping("/sessions/{sessionId}")
+    public Result<ChatSessionResp> getSession(@PathVariable("sessionId") Long sessionId) {
+        return Result.ok(chatService.getSessionDetail(sessionId));
+    }
+
     @PostMapping("/sessions/{sessionId}/messages")
     public Result<ChatMessageResp> sendMessage(@PathVariable("sessionId") Long sessionId,
                                                 @RequestBody SendMessageReq req) {
@@ -51,6 +62,12 @@ public class ChatController {
     @PutMapping("/sessions/{sessionId}/end")
     public Result<Void> endSession(@PathVariable("sessionId") Long sessionId) {
         chatService.endSession(sessionId);
+        return Result.ok();
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public Result<Void> deleteSession(@PathVariable("sessionId") Long sessionId) {
+        chatService.deleteSession(sessionId);
         return Result.ok();
     }
 }

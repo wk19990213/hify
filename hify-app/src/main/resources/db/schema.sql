@@ -86,11 +86,11 @@ CREATE TABLE IF NOT EXISTS provider (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型提供商配置';
 
 -- ----------------------------
--- 5. 模型配置
+-- 5. 模型配置（按 model_id 唯一，与 provider 解耦）
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS model_config (
     id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
-    provider_id     BIGINT          NOT NULL COMMENT '所属提供商 ID',
+    provider_id     BIGINT          NOT NULL COMMENT '代表性提供商 ID',
     model_id        VARCHAR(100)    NOT NULL COMMENT '原始模型标识，如 gpt-4-turbo',
     name            VARCHAR(100)    NOT NULL COMMENT '显示名称，如 GPT-4 Turbo',
     code            VARCHAR(50)     NOT NULL COMMENT '唯一编码，如"gpt4t"',
@@ -99,14 +99,29 @@ CREATE TABLE IF NOT EXISTS model_config (
     status          TINYINT         DEFAULT 1 COMMENT '0禁用 1启用 2 deprecated',
     is_default      TINYINT(1)      DEFAULT 0 COMMENT '是否默认模型',
     sort_order      INT             DEFAULT 0,
+    provider_count  INT             NOT NULL DEFAULT 1 COMMENT '提供此模型的供应商数量',
     created_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted         TINYINT(1)      NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_provider_model (provider_id, model_id, deleted),
+    UNIQUE KEY uk_model_id (model_id, deleted),
     INDEX idx_provider_status (provider_id, status),
     INDEX idx_deleted (deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型配置';
+
+-- ----------------------------
+-- 5.1 提供商-模型关联表
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS provider_model (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    provider_id BIGINT       NOT NULL COMMENT '提供商 ID',
+    model_id    VARCHAR(100) NOT NULL COMMENT '模型标识',
+    created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_pm (provider_id, model_id),
+    INDEX idx_model_id (model_id),
+    INDEX idx_provider_id (provider_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提供商-模型关联表';
 
 -- ----------------------------
 -- 6. Agent 配置

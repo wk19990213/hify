@@ -75,8 +75,8 @@
           />
         </el-form-item>
 
-        <el-form-item label="模型配置">
-          <el-select v-model="form.modelConfigId" placeholder="请选择模型" style="width: 100%" clearable>
+        <el-form-item label="模型配置" prop="modelConfigId" required>
+          <el-select v-model="form.modelConfigId" placeholder="请选择模型" style="width: 100%">
             <el-option
               v-for="item in modelOptions"
               :key="item.id"
@@ -170,6 +170,7 @@ const formRules = {
     { min: 2, max: 64, message: '长度 2 ~ 64 个字符', trigger: 'blur' },
     { pattern: /^[a-z0-9-]+$/, message: '只允许小写字母、数字和连字符', trigger: 'blur' },
   ],
+  modelConfigId: [{ required: true, message: '必须选择模型配置', trigger: 'change' }],
 }
 
 const fetchList = (params: any) => getAgentList(params)

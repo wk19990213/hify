@@ -11,6 +11,10 @@ public interface ChatService {
 
     ChatSessionResp createSession(Long agentId, String title);
 
+    ChatSessionResp getSessionDetail(Long sessionId);
+
+    List<ChatSessionResp> listAgentSessions(Long agentId);
+
     ChatMessageResp sendMessage(Long sessionId, SendMessageReq req);
 
     SseEmitter sendMessageStream(Long sessionId, SendMessageReq req);
@@ -18,4 +22,6 @@ public interface ChatService {
     List<ChatMessageResp> getHistory(Long sessionId);
 
     void endSession(Long sessionId);
+
+    void deleteSession(Long sessionId);
 }

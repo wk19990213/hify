@@ -1,9 +1,12 @@
 package com.hify.provider.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.http.LlmHttpClient;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +14,7 @@ import java.util.Map;
 /**
  * Ollama 适配器 —— /api/tags 测试，/api/chat 聊天，无需认证。
  */
+@Slf4j
 public class OllamaAdapter extends AbstractProviderAdapter {
 
     public OllamaAdapter(LlmHttpClient llmHttpClient, ObjectMapper objectMapper) {
@@ -91,6 +95,19 @@ public class OllamaAdapter extends AbstractProviderAdapter {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    @Override
+    public List<String> listModelIds(String baseUrl, Map<String, Object> authConfig) {
+        List<String> ids = new ArrayList<>();
+        try {
+            Map<String, String> headers = buildHeaders(authConfig);
+            headers.put("Accept", "application/json");
+            String body = llmHttpClient.get(buildUrl(baseUrl), headers, TEST_TIMEOUT_MS);
+            JsonNode list = objectMapper.readTree(body).get("models");
+            if (list != null) for (JsonNode m : list) ids.add(m.get("name").asText());
+        } catch (Exception e) { log.warn("Failed to list models: {}", e.getMessage()); }
+        return ids;
     }
 
     @Override

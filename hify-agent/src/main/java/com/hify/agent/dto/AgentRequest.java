@@ -1,5 +1,6 @@
 package com.hify.agent.dto;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -27,8 +28,9 @@ public class AgentRequest {
     private String description;
 
     /**
-     * 模型配置 ID
+     * 模型配置 ID（必选）
      */
+    @NotNull(message = "必须选择模型配置")
     private Long modelConfigId;
 
     /**

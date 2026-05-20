@@ -24,8 +24,10 @@ import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
+import com.hify.provider.entity.ProviderModelEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderMapper;
+import com.hify.provider.mapper.ProviderModelMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -52,6 +54,7 @@ public class ChatServiceImpl implements ChatService {
     private final AgentService agentService;
     private final ModelConfigMapper modelConfigMapper;
     private final ProviderMapper providerMapper;
+    private final ProviderModelMapper providerModelMapper;
     private final ProviderAdapterFactory adapterFactory;
     private final CircuitBreakerService circuitBreakerService;
     private final KnowledgeService knowledgeService;
@@ -73,11 +76,53 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public ChatSessionResp getSessionDetail(Long sessionId) {
+        ChatSessionEntity session = getSession(sessionId);
+        List<ChatMessageResp> messages = getHistory(sessionId);
+        return toSessionResp(session, messages);
+    }
+
+    @Override
+    public List<ChatSessionResp> listAgentSessions(Long agentId) {
+        List<ChatSessionEntity> sessions = sessionMapper.selectList(
+                new LambdaQueryWrapper<ChatSessionEntity>()
+                        .eq(ChatSessionEntity::getAgentId, agentId)
+                        .eq(ChatSessionEntity::getStatus, "active")
+                        .eq(ChatSessionEntity::getDeleted, 0)
+                        .ge(ChatSessionEntity::getCreatedAt, java.time.LocalDateTime.now().minusMonths(1))
+                        .orderByDesc(ChatSessionEntity::getCreatedAt)
+        );
+        return sessions.stream()
+                .map(s -> toSessionResp(s, List.of()))
+                .toList();
+    }
+
+    /** 取用户消息前 20 字作为会话标题（首次发送时自动设置） */
+    private void autoTitle(ChatSessionEntity session, String userContent) {
+        if (!"新对话".equals(session.getTitle())) return;
+        String title = userContent.length() > 20 ? userContent.substring(0, 20) + "..." : userContent;
+        // 去掉换行
+        title = title.replace('\n', ' ').replace('\r', ' ');
+        session.setTitle(title);
+        sessionMapper.updateById(session);
+    }
+
+    @Override
     @Transactional
     public void endSession(Long sessionId) {
         ChatSessionEntity session = getSession(sessionId);
         session.setStatus("ended");
         sessionMapper.updateById(session);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSession(Long sessionId) {
+        ChatSessionEntity session = getSession(sessionId);
+        // 删除会话及其所有消息
+        messageMapper.delete(new LambdaQueryWrapper<ChatMessageEntity>()
+                .eq(ChatMessageEntity::getSessionId, sessionId));
+        sessionMapper.deleteById(sessionId);
     }
 
     // ==================== 非流式对话 ====================
@@ -98,6 +143,7 @@ public class ChatServiceImpl implements ChatService {
         userMsg.setContent(req.getContent());
         userMsg.setTokenCount(0);
         messageMapper.insert(userMsg);
+        autoTitle(session, req.getContent());
 
         // 调用 LLM
         ChatRequest chatReq = new ChatRequest(ctx.modelId, messages,
@@ -141,6 +187,7 @@ public class ChatServiceImpl implements ChatService {
         userMsg.setContent(req.getContent());
         userMsg.setTokenCount(0);
         messageMapper.insert(userMsg);
+        autoTitle(session, req.getContent());
 
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
 
@@ -228,7 +275,7 @@ public class ChatServiceImpl implements ChatService {
 
     // ==================== 内部：配置解析链 ====================
 
-    /** Agent → ModelConfig → Provider → Adapter 完整链路 */
+    /** Agent → ModelConfig → model_id → provider_model → Provider → Adapter */
     private AgentContext resolveContext(ChatSessionEntity session) {
         AgentResponse agent = agentService.getDetail(session.getAgentId());
         if (agent.getModelConfigId() == null) {
@@ -238,10 +285,33 @@ public class ChatServiceImpl implements ChatService {
         if (modelConfig == null || modelConfig.getDeleted() == 1) {
             throw BizException.notFound("模型配置不存在");
         }
-        ProviderEntity provider = providerMapper.selectById(modelConfig.getProviderId());
-        if (provider == null || provider.getDeleted() == 1) {
-            throw BizException.notFound("提供商不存在");
+        if (modelConfig.getProviderCount() == null || modelConfig.getProviderCount() <= 0) {
+            throw BizException.notFound("模型没有可用提供商");
         }
+
+        // 通过 provider_model 查找可用 Provider（优先使用 model_config 记录的 provider_id）
+        List<ProviderModelEntity> pmList = providerModelMapper.selectList(
+                new LambdaQueryWrapper<ProviderModelEntity>()
+                        .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
+
+        ProviderEntity provider = null;
+        for (ProviderModelEntity pm : pmList) {
+            ProviderEntity p = providerMapper.selectById(pm.getProviderId());
+            if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
+                if (p.getId().equals(modelConfig.getProviderId())) {
+                    provider = p; // 优先使用 model_config 记录的 provider
+                    break;
+                }
+                if (provider == null) {
+                    provider = p;
+                }
+            }
+        }
+
+        if (provider == null) {
+            throw BizException.notFound("模型的所有提供商均不可用");
+        }
+
         ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
 
         // 解密 authConfig

@@ -141,6 +141,19 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
         return getJsonNode(responseBody, "choices", 0, "message", "content");
     }
 
+    @Override
+    public List<String> listModelIds(String baseUrl, Map<String, Object> authConfig) {
+        List<String> ids = new ArrayList<>();
+        try {
+            Map<String, String> headers = buildHeaders(authConfig);
+            headers.put("Accept", "application/json");
+            String body = llmHttpClient.get(buildUrl(baseUrl), headers, TEST_TIMEOUT_MS);
+            JsonNode list = objectMapper.readTree(body).get(getModelsJsonKey());
+            if (list != null) for (JsonNode m : list) ids.add(m.get("id").asText());
+        } catch (Exception e) { log.warn("Failed to list models: {}", e.getMessage()); }
+        return ids;
+    }
+
     // ==================== 工具方法 ====================
 
     int extractModelCount(String responseBody) {

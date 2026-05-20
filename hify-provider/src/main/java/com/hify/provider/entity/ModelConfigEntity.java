@@ -35,6 +35,9 @@ public class ModelConfigEntity extends BaseEntity {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Object priceConfig;
 
+    /** 提供此模型的供应商数量 */
+    private Integer providerCount;
+
     /** 状态：0=禁用 1=启用 2=deprecated */
     private Integer status;
 

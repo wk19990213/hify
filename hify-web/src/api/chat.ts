@@ -1,4 +1,4 @@
-import { get, post, put } from '@/utils/request'
+import { get, post, put, del } from '@/utils/request'
 
 export interface ChatMessage {
   id: number
@@ -18,6 +18,12 @@ export interface ChatSession {
   createdAt: string
 }
 
+export const listSessions = (agentId: number) =>
+  get<ChatSession[]>(`/v1/chat/sessions?agentId=${agentId}`)
+
+export const getSessionDetail = (sessionId: number) =>
+  get<ChatSession>(`/v1/chat/sessions/${sessionId}`)
+
 export const createChatSession = (agentId: number, title?: string) =>
   post<ChatSession>(`/v1/chat/sessions?agentId=${agentId}&title=${encodeURIComponent(title || '新对话')}`)
 
@@ -29,3 +35,6 @@ export const getChatHistory = (sessionId: number) =>
 
 export const endChatSession = (sessionId: number) =>
   put<void>(`/v1/chat/sessions/${sessionId}/end`)
+
+export const deleteSession = (sessionId: number) =>
+  del<void>(`/v1/chat/sessions/${sessionId}`)
