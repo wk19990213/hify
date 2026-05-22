@@ -40,6 +40,24 @@ const routes: RouteRecordRaw[] = [
     name: 'Knowledge',
     component: () => import('@/views/knowledge/KnowledgeList.vue'),
     meta: { title: '知识库' }
+  },
+  {
+    path: '/workflows',
+    name: 'WorkflowList',
+    component: () => import('@/views/workflow/WorkflowList.vue'),
+    meta: { title: '工作流' }
+  },
+  {
+    path: '/workflows/create',
+    name: 'WorkflowCreate',
+    component: () => import('@/views/workflow/WorkflowEditor.vue'),
+    meta: { title: '新建工作流' }
+  },
+  {
+    path: '/workflows/:id/edit',
+    name: 'WorkflowEdit',
+    component: () => import('@/views/workflow/WorkflowEditor.vue'),
+    meta: { title: '编辑工作流' }
   }
 ]
 

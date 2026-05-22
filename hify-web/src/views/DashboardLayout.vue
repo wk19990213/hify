@@ -193,7 +193,8 @@ import {
   Upload,
   Document,
   DataLine,
-  Monitor
+  Monitor,
+  Share
 } from '@element-plus/icons-vue'
 
 const currentPath = ref('/dashboard')
@@ -210,6 +211,7 @@ const menuItems = [
   { path: '/dashboard', label: '概览', icon: HomeFilled },
   { path: '/agents', label: 'Agents', icon: Cpu },
   { path: '/chat', label: '对话', icon: ChatDotRound },
+  { path: '/workflows', label: '工作流', icon: Share },
   { path: '/knowledge', label: '知识库', icon: Folder },
   { path: '/settings', label: '设置', icon: Setting },
 ]
