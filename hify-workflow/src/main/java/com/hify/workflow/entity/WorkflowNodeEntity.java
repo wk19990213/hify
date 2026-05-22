@@ -7,9 +7,12 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("workflow")
-public class WorkflowEntity extends BaseEntity {
+@TableName("workflow_node")
+public class WorkflowNodeEntity extends BaseEntity {
+    private Long workflowId;
     private String name;
-    private String description;
-    private Integer status;
+    private String type;
+    private String configJson;
+    private Integer positionX;
+    private Integer positionY;
 }
