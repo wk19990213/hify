@@ -108,6 +108,22 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="MCP 工具绑定">
+          <div v-if="mcpToolOptions.length === 0" class="text-gray">
+            暂无可用 MCP 工具，请先在
+            <router-link to="/mcp-servers">MCP 管理</router-link>
+            中添加服务器
+          </div>
+          <el-checkbox-group v-else v-model="form._selectedTools">
+            <div v-for="opt in mcpToolOptions" :key="opt.key" style="margin-bottom: 4px">
+              <el-checkbox :label="opt.key" :value="opt.key">
+                <span style="font-weight:500">{{ opt.toolName }}</span>
+                <span class="tool-desc">{{ opt.serverName }} — {{ opt.description }}</span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+        </el-form-item>
+
         <el-form-item label="系统提示词">
           <el-input
             v-model="form.systemPrompt"
@@ -157,6 +173,8 @@ import {
 } from '@/api/agent'
 import type { Agent, AgentRequest } from '@/api/agent'
 import { getWorkflowList } from '@/api/workflow'
+import { getAllMcpTools, type McpServerWithTools } from '@/api/mcpServer'
+import type { AgentToolRequest } from '@/api/agent'
 
 // ── 表格列 ──────────────────────────────────────────
 
@@ -200,6 +218,16 @@ const modelOptions = ref<{ id: number; name: string }[]>([])
 const kbOptions = ref<{ id: number; name: string }[]>([])
 const workflowOptions = ref<{ id: number; name: string }[]>([])
 
+// ── MCP 工具选项 ───────────────────────────────────
+interface ToolOption {
+  key: string
+  serverId: number
+  serverName: string
+  toolName: string
+  description: string
+}
+const mcpToolOptions = ref<ToolOption[]>([])
+
 onMounted(async () => {
   try {
     modelOptions.value = await get<{ id: number; name: string }[]>('/v1/providers/model-configs')
@@ -207,6 +235,20 @@ onMounted(async () => {
     kbOptions.value = kbRes.list || []
     const wfRes = await getWorkflowList({ pageSize: 100 })
     workflowOptions.value = (wfRes.list || []).map((w: any) => ({ id: w.id, name: w.name }))
+    const servers = await getAllMcpTools()
+    const opts: ToolOption[] = []
+    for (const s of servers) {
+      for (const t of s.tools) {
+        opts.push({
+          key: `${s.serverId}:${t.name}`,
+          serverId: s.serverId,
+          serverName: s.serverName,
+          toolName: t.name,
+          description: t.description || '',
+        })
+      }
+    }
+    mcpToolOptions.value = opts
   } catch {
     // 获取选项失败，下拉框为空
   }
@@ -229,6 +271,9 @@ const handleAdd = () => {
 
 const handleEdit = (row: Agent) => {
   dialogTitle.value = '编辑 Agent'
+  const selectedKeys = (row.tools || []).map(
+    (t: any) => `${t.mcpServerId}:${t.toolName}`
+  )
   dialogRef.value?.open({
     id: row.id,
     name: row.name,
@@ -242,6 +287,7 @@ const handleEdit = (row: Agent) => {
     status: row.status,
     sortOrder: row.sortOrder,
     workflowId: row.workflowId,
+    _selectedTools: selectedKeys,
   })
 }
 
@@ -273,6 +319,15 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
   try {
     dialogRef.value?.setLoading(true)
 
+    const tools: AgentToolRequest[] = (formData._selectedTools || []).map((key: string) => {
+      const idx = key.indexOf(':')
+      return {
+        toolName: key.substring(idx + 1),
+        toolType: 'mcp' as const,
+        mcpServerId: Number(key.substring(0, idx)),
+      }
+    })
+
     const req: AgentRequest = {
       name: formData.name,
       code: formData.code,
@@ -285,6 +340,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
       status: formData.status,
       sortOrder: formData.sortOrder,
       workflowId: formData.workflowId,
+      tools: tools.length > 0 ? tools : undefined,
     }
 
     if (isEdit) {
@@ -362,6 +418,12 @@ const formatDateTime = (datetime: string) => {
 
 .text-gray {
   color: var(--text-secondary);
+}
+
+.tool-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-left: 8px;
 }
 
 @media (max-width: 768px) {

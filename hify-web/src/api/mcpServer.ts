@@ -55,3 +55,14 @@ export const updateMcpServer = (id: number, data: McpServerRequest) =>
 
 export const deleteMcpServer = (id: number) =>
   del<void>(`/v1/mcp-servers/${id}`)
+
+/** 所有 MCP Server 及其工具（用于 Agent 工具绑定选择） */
+export interface McpServerWithTools {
+  serverId: number
+  serverName: string
+  tools: { name: string; description: string }[]
+}
+
+/** 获取所有 MCP Server 的工具列表（用于 Agent 绑定 UI） */
+export const getAllMcpTools = () =>
+  get<McpServerWithTools[]>('/v1/mcp-servers/tools')

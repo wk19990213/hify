@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/v1/mcp-servers")
 @RequiredArgsConstructor
@@ -18,6 +20,11 @@ public class McpController {
     @PostMapping
     public Result<Long> create(@Valid @RequestBody McpServerCreateReq req) {
         return Result.ok(mcpService.create(req));
+    }
+
+    @GetMapping("/tools")
+    public Result<List<McpServerToolsResp>> getAllTools() {
+        return Result.ok(mcpService.getAllTools());
     }
 
     @GetMapping

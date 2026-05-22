@@ -16,6 +16,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -91,6 +92,23 @@ public class McpServiceImpl implements McpService {
             throw BizException.notFound("MCP 服务器不存在");
         }
         return toResp(entity);
+    }
+
+    @Override
+    public List<McpServerToolsResp> getAllTools() {
+        var wrapper = new LambdaQueryWrapper<McpServerEntity>()
+                .eq(McpServerEntity::getDeleted, 0)
+                .eq(McpServerEntity::getStatus, 1);
+        List<McpServerEntity> servers = serverMapper.selectList(wrapper);
+        List<McpServerToolsResp> result = new ArrayList<>();
+        for (McpServerEntity s : servers) {
+            McpServerToolsResp resp = new McpServerToolsResp();
+            resp.setServerId(s.getId());
+            resp.setServerName(s.getName());
+            resp.setTools(clientManager.listTools(s.getId()));
+            result.add(resp);
+        }
+        return result;
     }
 
     private McpServerResp toResp(McpServerEntity entity) {
