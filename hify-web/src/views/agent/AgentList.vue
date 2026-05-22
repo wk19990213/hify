@@ -97,6 +97,17 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="工作流">
+          <el-select v-model="form.workflowId" placeholder="请选择工作流（可选）" style="width: 100%" clearable>
+            <el-option
+              v-for="item in workflowOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="系统提示词">
           <el-input
             v-model="form.systemPrompt"
@@ -145,6 +156,7 @@ import {
   deleteAgent,
 } from '@/api/agent'
 import type { Agent, AgentRequest } from '@/api/agent'
+import { getWorkflowList } from '@/api/workflow'
 
 // ── 表格列 ──────────────────────────────────────────
 
@@ -186,12 +198,15 @@ const dialogTitle = ref('新增 Agent')
 // ── 模型选项（从 /v1/model-configs 获取）──
 const modelOptions = ref<{ id: number; name: string }[]>([])
 const kbOptions = ref<{ id: number; name: string }[]>([])
+const workflowOptions = ref<{ id: number; name: string }[]>([])
 
 onMounted(async () => {
   try {
     modelOptions.value = await get<{ id: number; name: string }[]>('/v1/providers/model-configs')
     const kbRes = await get<{ list: { id: number; name: string }[] }>('/v1/knowledge/bases')
     kbOptions.value = kbRes.list || []
+    const wfRes = await getWorkflowList({ pageSize: 100 })
+    workflowOptions.value = (wfRes.list || []).map((w: any) => ({ id: w.id, name: w.name }))
   } catch {
     // 获取选项失败，下拉框为空
   }
@@ -226,6 +241,7 @@ const handleEdit = (row: Agent) => {
     conversationMaxRounds: row.conversationMaxRounds,
     status: row.status,
     sortOrder: row.sortOrder,
+    workflowId: row.workflowId,
   })
 }
 
@@ -268,6 +284,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
       conversationMaxRounds: formData.conversationMaxRounds,
       status: formData.status,
       sortOrder: formData.sortOrder,
+      workflowId: formData.workflowId,
     }
 
     if (isEdit) {

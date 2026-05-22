@@ -32,6 +32,8 @@ export interface Agent {
   modelConfigId?: number
   kbId?: number
   modelConfigName?: string
+  workflowId?: number
+  workflowName?: string
   systemPrompt?: string
   conversationMaxRounds: number
   temperature: number
@@ -50,6 +52,7 @@ export interface AgentRequest {
   description?: string
   modelConfigId?: number
   kbId?: number
+  workflowId?: number
   systemPrompt?: string
   conversationMaxRounds?: number
   temperature?: number
