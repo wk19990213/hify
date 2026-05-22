@@ -20,6 +20,10 @@ target/
 node_modules/
 dist/
 
+# Project docs (dev tooling)
+CONTEXT.md
+docs/
+
 # OS
 .DS_Store
 Thumbs.db
