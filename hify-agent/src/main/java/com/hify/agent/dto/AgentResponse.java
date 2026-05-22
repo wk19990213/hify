@@ -75,9 +75,14 @@ public class AgentResponse {
     private Integer sortOrder;
 
     /**
-     * 绑定工具列表（仅详情接口填充）
+     * 绑定工具列表（仅详情接口填充，旧表 agent_tool）
      */
     private List<AgentToolResponse> tools;
+
+    /**
+     * MCP 服务绑定 ID 列表（仅详情接口填充，新表 agent_mcp_server）
+     */
+    private List<Long> mcpServerIds;
 
     /**
      * 工具数量（列表接口填充）

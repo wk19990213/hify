@@ -40,9 +40,14 @@ public interface AgentService {
     AgentResponse getDetail(Long id);
 
     /**
-     * 获取 Agent 绑定的工具列表
+     * 获取 Agent 绑定的工具列表（旧表 agent_tool，灰度期）
      */
     List<AgentToolResponse> getAgentTools(Long agentId);
+
+    /**
+     * 获取 Agent 绑定的 MCP 服务 ID 列表（新表 agent_mcp_server）
+     */
+    List<Long> getAgentMcpServerIds(Long agentId);
 
     /**
      * 批量更新 Agent 状态

@@ -51,7 +51,7 @@ public class OllamaAdapter extends AbstractProviderAdapter {
         Map<String, Object> body = new HashMap<>();
         body.put("model", request.model());
         // Ollama 不支持 system 消息独立，合并进第一条消息
-        List<Map<String, String>> msgs = request.messages();
+        List<Map<String, Object>> msgs = request.messages();
         body.put("messages", msgs);
         body.put("stream", request.stream());
         Map<String, Object> options = new HashMap<>();

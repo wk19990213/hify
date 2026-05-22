@@ -17,12 +17,6 @@
       :show-pagination="true"
       empty-text="暂无 MCP 服务器"
     >
-      <template #transportType="{ row }">
-        <el-tag :type="row.transportType === 'sse' ? 'success' : ''" size="small">
-          {{ row.transportType === 'sse' ? 'SSE' : 'Stdio' }}
-        </el-tag>
-      </template>
-
       <template #status="{ row }">
         <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="light">
           {{ row.status === 1 ? '启用' : '禁用' }}
@@ -50,43 +44,22 @@
     >
       <template #default="{ form }">
         <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如：filesystem-server" clearable />
+          <el-input v-model="form.name" placeholder="例如：订单查询服务" clearable />
         </el-form-item>
 
-        <el-form-item label="传输类型" prop="transportType">
-          <el-select v-model="form.transportType" placeholder="请选择传输类型" style="width: 100%">
-            <el-option label="Stdio（子进程通信）" value="stdio" />
-            <el-option label="SSE（HTTP 服务）" value="sse" />
-          </el-select>
+        <el-form-item label="URL" prop="url">
+          <el-input v-model="form.url" placeholder="例如：http://localhost:8090/mcp" clearable />
         </el-form-item>
 
-        <template v-if="form.transportType !== 'sse'">
-          <el-form-item label="Command" prop="command">
-            <el-input v-model="form.command" placeholder="例如：npx 或 uvx" clearable />
-          </el-form-item>
-
-          <el-form-item label="参数 (JSON 数组)">
-            <el-input
-              v-model="form.argsJson"
-              placeholder='例如：["-y", "@modelcontextprotocol/server-filesystem"]'
-              clearable
-            />
-          </el-form-item>
-
-          <el-form-item label="环境变量 (JSON 对象)">
-            <el-input
-              v-model="form.envVarsJson"
-              placeholder='例如：{"HOME": "/tmp"}'
-              clearable
-            />
-          </el-form-item>
-        </template>
-
-        <template v-if="form.transportType === 'sse'">
-          <el-form-item label="URL" prop="url">
-            <el-input v-model="form.url" placeholder="例如：http://localhost:8080/sse" clearable />
-          </el-form-item>
-        </template>
+        <el-form-item label="鉴权配置 (JSON)">
+          <el-input
+            v-model="form.authConfig"
+            type="textarea"
+            :rows="3"
+            placeholder='{"headers": {"Authorization": "Bearer xxx"}}'
+            clearable
+          />
+        </el-form-item>
 
         <el-form-item label="状态">
           <el-switch
@@ -120,9 +93,7 @@ import type { McpServer, McpServerRequest } from '@/api/mcpServer'
 
 const columns: TableColumn<McpServer>[] = [
   { prop: 'name', label: '名称', minWidth: 180 },
-  { prop: 'transportType', label: '传输类型', width: 100, slot: 'transportType', align: 'center' },
-  { prop: 'command', label: 'Command', minWidth: 160 },
-  { prop: 'url', label: 'URL', minWidth: 200 },
+  { prop: 'url', label: 'URL', minWidth: 300 },
   { prop: 'status', label: '状态', width: 80, slot: 'status', align: 'center' },
   { prop: 'createdAt', label: '创建时间', width: 170, slot: 'createdAt' },
   { prop: 'action', label: '操作', width: 160, slot: 'action', fixed: 'right', align: 'center' },
@@ -135,7 +106,9 @@ const formRules = {
     { required: true, message: '请输入服务器名称', trigger: 'blur' },
     { min: 2, max: 50, message: '长度 2 ~ 50 个字符', trigger: 'blur' },
   ],
-  transportType: [{ required: true, message: '请选择传输类型', trigger: 'change' }],
+  url: [
+    { required: true, message: '请输入 MCP 服务 URL', trigger: 'blur' },
+  ],
 }
 
 const fetchList = (params: any) => getMcpServerList(params)
@@ -152,7 +125,7 @@ const dialogTitle = ref('新增 MCP 服务器')
 
 const handleAdd = () => {
   dialogTitle.value = '新增 MCP 服务器'
-  dialogRef.value?.open({ status: 1, transportType: 'stdio' })
+  dialogRef.value?.open({ status: 1, transportType: 'http' })
 }
 
 // ── 编辑 ────────────────────────────────────────────
@@ -185,11 +158,9 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
 
     const req: McpServerRequest = {
       name: formData.name,
-      command: formData.command || undefined,
-      argsJson: formData.argsJson || undefined,
-      envVarsJson: formData.envVarsJson || undefined,
-      url: formData.url || undefined,
-      transportType: formData.transportType || 'stdio',
+      url: formData.url,
+      authConfig: formData.authConfig || undefined,
+      transportType: 'http',
       status: formData.status ?? 1,
     }
 

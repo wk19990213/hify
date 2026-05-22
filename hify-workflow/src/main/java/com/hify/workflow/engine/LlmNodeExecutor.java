@@ -81,7 +81,7 @@ public class LlmNodeExecutor implements NodeExecutor {
             Map<String, Object> authConfig = decryptAuth(provider);
 
             // 构建初始 messages
-            List<Map<String, String>> messages = new ArrayList<>();
+            List<Map<String, Object>> messages = new ArrayList<>();
             messages.add(Map.of("role", "user", "content", prompt));
 
             // 按节点配置过滤工具列表
@@ -101,13 +101,30 @@ public class LlmNodeExecutor implements NodeExecutor {
                     break;
                 }
 
+                // 追加 assistant 消息（含 tool_calls）
+                List<Map<String, Object>> tcMaps = new ArrayList<>();
+                for (ProviderAdapter.ToolCall tc : toolCalls) {
+                    Map<String, Object> func = new LinkedHashMap<>();
+                    func.put("name", tc.getName());
+                    func.put("arguments", toJson(tc.getArguments()));
+                    tcMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
+                            "type", "function", "function", func));
+                }
+                Map<String, Object> asstMsg = new LinkedHashMap<>();
+                asstMsg.put("role", "assistant");
+                asstMsg.put("content", lastContent != null ? lastContent : "");
+                asstMsg.put("tool_calls", tcMaps);
+                messages.add(asstMsg);
+
                 for (ProviderAdapter.ToolCall tc : toolCalls) {
                     ToolResult tr = executeToolCall(tc, tools);
-                    messages.add(Map.of("role", "assistant", "content",
-                            toToolCallJson(tc)));
-                    messages.add(Map.of("role", "tool", "content",
+                    Map<String, Object> toolMsg = new LinkedHashMap<>();
+                    toolMsg.put("role", "tool");
+                    toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
+                    toolMsg.put("content",
                             tr.isSuccess() ? tr.getContent()
-                                    : "Error: " + tr.getError()));
+                                    : "Error: " + tr.getError());
+                    messages.add(toolMsg);
                 }
 
                 if (lastContent != null && !lastContent.isBlank()) {
@@ -135,26 +152,22 @@ public class LlmNodeExecutor implements NodeExecutor {
         }
     }
 
-    /** 按节点配置过滤工具列表 */
+    /** 按节点配置检查是否启用工具 */
     private List<ToolDef> resolveNodeTools(Map<String, Object> config,
                                             List<ToolDef> allTools) {
         if (allTools == null || allTools.isEmpty()) return null;
         Boolean enabled = (Boolean) config.get("toolsEnabled");
         if (!Boolean.TRUE.equals(enabled)) return null;
-        @SuppressWarnings("unchecked")
-        List<String> selectedNames = (List<String>) config.get("tools");
-        if (selectedNames == null || selectedNames.isEmpty()) return null;
-        return allTools.stream()
-                .filter(t -> selectedNames.contains(t.getName()))
-                .toList();
+        return allTools;
     }
 
     private String toToolCallJson(ProviderAdapter.ToolCall tc) {
+        return toJson(Map.of("name", tc.getName(), "arguments", tc.getArguments()));
+    }
+
+    private String toJson(Object obj) {
         try {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("name", tc.getName());
-            m.put("arguments", tc.getArguments());
-            return objectMapper.writeValueAsString(m);
+            return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
             return "{}";
         }

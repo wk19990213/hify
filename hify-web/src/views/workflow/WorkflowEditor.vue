@@ -80,12 +80,7 @@
               </el-form-item>
               <el-form-item label="工具调用">
                 <el-switch v-model="llmToolsEnabled" size="small" />
-                <span class="type-hint">开启后 LLM 可自主判断是否调用工具</span>
-              </el-form-item>
-              <el-form-item v-if="llmToolsEnabled" label="工具名称">
-                <el-input v-model="llmToolsInput" type="textarea" :rows="2"
-                  placeholder="输入工具名称，多个用逗号或换行分隔，如：查订单, 查物流" />
-                <div class="type-hint">填入 Agent 已绑定的 MCP 工具名称，勾选的工具将传给 LLM 调用</div>
+                <span class="type-hint">开启后 LLM 可自主判断是否调用 Agent 绑定的全部 MCP 工具</span>
               </el-form-item>
             </template>
 
@@ -288,20 +283,6 @@ const conditionExpression = configField<string>('expression', '')
 
 // 工具调用开关
 const llmToolsEnabled = configField<boolean>('toolsEnabled', false)
-
-// 工具名称输入（逗号/换行分隔）
-const llmToolsInput = computed({
-  get: () => {
-    const cfg = parseConfig()
-    const tools = cfg.tools as string[] | undefined
-    return tools ? tools.join(', ') : ''
-  },
-  set: (val: string) => {
-    const cfg = parseConfig()
-    cfg.tools = val.split(/[,\n]+/).map(s => s.trim()).filter(Boolean)
-    updateConfig(cfg)
-  }
-})
 
 const outEdges = computed(() => {
   if (selectedNodeIndex.value === null) return []

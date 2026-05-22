@@ -5,10 +5,8 @@ import { get, post, put, del } from '@/utils/request'
 export interface McpServer {
   id: number
   name: string
-  command: string | null
-  argsJson: string | null
-  envVarsJson: string | null
-  url: string | null
+  url: string
+  authConfig: string | null
   transportType: string
   status: number
   createdAt: string
@@ -17,10 +15,8 @@ export interface McpServer {
 
 export interface McpServerRequest {
   name: string
-  command?: string
-  argsJson?: string
-  envVarsJson?: string
-  url?: string
+  url: string
+  authConfig?: string
   transportType?: string
   status?: number
 }
@@ -56,7 +52,7 @@ export const updateMcpServer = (id: number, data: McpServerRequest) =>
 export const deleteMcpServer = (id: number) =>
   del<void>(`/v1/mcp-servers/${id}`)
 
-/** 所有 MCP Server 及其工具（用于 Agent 工具绑定选择） */
+/** 所有 MCP Server 及其工具（用于 Agent 服务绑定选择） */
 export interface McpServerWithTools {
   serverId: number
   serverName: string

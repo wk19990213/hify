@@ -41,6 +41,7 @@ export interface Agent {
   sortOrder: number
   toolCount: number
   tools?: AgentToolResponse[]
+  mcpServerIds?: number[]
   createdAt: string
   updatedAt: string
 }
@@ -59,6 +60,7 @@ export interface AgentRequest {
   status?: number
   sortOrder?: number
   tools?: AgentToolRequest[]
+  mcpServerIds?: number[]
 }
 
 /** 列表查询参数 */

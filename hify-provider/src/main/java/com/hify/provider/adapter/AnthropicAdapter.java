@@ -54,8 +54,8 @@ public class AnthropicAdapter extends AbstractProviderAdapter {
         body.put("stream", request.stream());
 
         // 提取 system 消息
-        List<Map<String, String>> msgs = request.messages();
-        for (Map<String, String> m : msgs) {
+        List<Map<String, Object>> msgs = request.messages();
+        for (Map<String, Object> m : msgs) {
             if ("system".equals(m.get("role"))) {
                 body.put("system", m.get("content"));
                 break;
@@ -63,7 +63,7 @@ public class AnthropicAdapter extends AbstractProviderAdapter {
         }
         // 非 system 消息
         List<Map<String, Object>> anthropicMsgs = new java.util.ArrayList<>();
-        for (Map<String, String> m : msgs) {
+        for (Map<String, Object> m : msgs) {
             if (!"system".equals(m.get("role"))) {
                 anthropicMsgs.add(Map.of("role", m.get("role"), "content", m.get("content")));
             }

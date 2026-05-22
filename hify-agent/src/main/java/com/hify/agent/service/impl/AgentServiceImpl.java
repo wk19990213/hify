@@ -7,8 +7,10 @@ import com.hify.agent.dto.AgentResponse;
 import com.hify.agent.dto.AgentToolRequest;
 import com.hify.agent.dto.AgentToolResponse;
 import com.hify.agent.entity.AgentEntity;
+import com.hify.agent.entity.AgentMcpServerEntity;
 import com.hify.agent.entity.AgentToolEntity;
 import com.hify.agent.mapper.AgentMapper;
+import com.hify.agent.mapper.AgentMcpServerMapper;
 import com.hify.agent.mapper.AgentToolMapper;
 import com.hify.agent.service.AgentService;
 import com.hify.common.exception.BizException;
@@ -45,6 +47,7 @@ public class AgentServiceImpl implements AgentService {
 
     private final AgentMapper agentMapper;
     private final AgentToolMapper agentToolMapper;
+    private final AgentMcpServerMapper agentMcpServerMapper;
     private final ModelConfigMapper modelConfigMapper;
     private final McpServerMapper mcpServerMapper;
 
@@ -86,9 +89,14 @@ public class AgentServiceImpl implements AgentService {
 
         agentMapper.insert(entity);
 
-        // 保存工具绑定
+        // 保存工具绑定（旧表 agent_tool）
         if (req.getTools() != null && !req.getTools().isEmpty()) {
             saveAgentTools(entity.getId(), req.getTools());
+        }
+
+        // 保存 MCP 服务绑定（新表 agent_mcp_server）
+        if (req.getMcpServerIds() != null && !req.getMcpServerIds().isEmpty()) {
+            saveAgentMcpServers(entity.getId(), req.getMcpServerIds());
         }
 
         log.info("Agent created: id={}, name={}, code={}", entity.getId(), entity.getName(), entity.getCode());
@@ -141,6 +149,17 @@ public class AgentServiceImpl implements AgentService {
             }
         }
 
+        // 更新 MCP 服务绑定（新表 agent_mcp_server）
+        if (req.getMcpServerIds() != null) {
+            agentMcpServerMapper.delete(
+                    new LambdaQueryWrapper<AgentMcpServerEntity>()
+                            .eq(AgentMcpServerEntity::getAgentId, id)
+            );
+            if (!req.getMcpServerIds().isEmpty()) {
+                saveAgentMcpServers(id, req.getMcpServerIds());
+            }
+        }
+
         log.info("Agent updated: id={}, name={}", id, entity.getName());
     }
 
@@ -159,6 +178,10 @@ public class AgentServiceImpl implements AgentService {
         agentToolMapper.delete(
                 new LambdaQueryWrapper<AgentToolEntity>()
                         .eq(AgentToolEntity::getAgentId, id)
+        );
+        agentMcpServerMapper.delete(
+                new LambdaQueryWrapper<AgentMcpServerEntity>()
+                        .eq(AgentMcpServerEntity::getAgentId, id)
         );
 
         log.info("Agent deleted: id={}, name={}", id, entity.getName());
@@ -207,8 +230,26 @@ public class AgentServiceImpl implements AgentService {
                             AgentToolEntity::getAgentId,
                             Collectors.counting()));
 
+            var mcpServerRecords = agentMcpServerMapper.selectList(
+                            new LambdaQueryWrapper<AgentMcpServerEntity>()
+                                    .in(AgentMcpServerEntity::getAgentId, agentIds));
+
+            var mcpServerCountMap = mcpServerRecords.stream()
+                    .collect(Collectors.groupingBy(
+                            AgentMcpServerEntity::getAgentId,
+                            Collectors.counting()));
+
+            var mcpServerIdsMap = mcpServerRecords.stream()
+                    .collect(Collectors.groupingBy(
+                            AgentMcpServerEntity::getAgentId,
+                            Collectors.mapping(AgentMcpServerEntity::getMcpServerId,
+                                    Collectors.toList())));
+
             for (AgentResponse resp : responses) {
-                resp.setToolCount(toolCountMap.getOrDefault(resp.getId(), 0L).intValue());
+                long oldCount = toolCountMap.getOrDefault(resp.getId(), 0L);
+                long newCount = mcpServerCountMap.getOrDefault(resp.getId(), 0L);
+                resp.setToolCount((int) (oldCount + newCount));
+                resp.setMcpServerIds(mcpServerIdsMap.getOrDefault(resp.getId(), List.of()));
             }
         }
 
@@ -229,42 +270,43 @@ public class AgentServiceImpl implements AgentService {
 
         AgentResponse resp = convertToResponse(entity);
 
-        // 查询工具列表
+        // 查询工具列表（旧表 agent_tool）
         List<AgentToolEntity> toolEntities = agentToolMapper.selectList(
                 new LambdaQueryWrapper<AgentToolEntity>()
                         .eq(AgentToolEntity::getAgentId, id)
                         .orderByAsc(AgentToolEntity::getSortOrder)
         );
 
-        // 批量填充 MCP 服务名称
-        List<Long> mcpServerIds = toolEntities.stream()
+        // 批量填充 MCP 服务名称（旧表）
+        List<Long> oldMcpServerIds = toolEntities.stream()
                 .map(AgentToolEntity::getMcpServerId)
                 .filter(mid -> mid != null)
                 .distinct()
                 .toList();
-        Map<Long, String> mcpNameMap = Collections.emptyMap();
-        if (!mcpServerIds.isEmpty()) {
-            mcpNameMap = mcpServerMapper.selectList(
-                            new LambdaQueryWrapper<McpServerEntity>()
-                                    .in(McpServerEntity::getId, mcpServerIds)
-                                    .select(McpServerEntity::getId, McpServerEntity::getName))
-                    .stream()
-                    .collect(Collectors.toMap(McpServerEntity::getId, McpServerEntity::getName, (a, b) -> a));
-        }
-        final Map<Long, String> nameMap = mcpNameMap;
+        Map<Long, String> mcpNameMap = getMcpNameMap(oldMcpServerIds);
 
         List<AgentToolResponse> tools = toolEntities.stream()
                 .map(t -> {
                     AgentToolResponse tr = convertToolToResponse(t);
                     if (t.getMcpServerId() != null) {
-                        tr.setMcpServerName(nameMap.get(t.getMcpServerId()));
+                        tr.setMcpServerName(mcpNameMap.get(t.getMcpServerId()));
                     }
                     return tr;
                 })
                 .toList();
 
         resp.setTools(tools);
-        resp.setToolCount(tools.size());
+
+        // 查询 MCP 服务绑定（新表 agent_mcp_server）
+        List<AgentMcpServerEntity> mcpServers = agentMcpServerMapper.selectList(
+                new LambdaQueryWrapper<AgentMcpServerEntity>()
+                        .eq(AgentMcpServerEntity::getAgentId, id)
+                        .orderByAsc(AgentMcpServerEntity::getSortOrder)
+        );
+        resp.setMcpServerIds(mcpServers.stream()
+                .map(AgentMcpServerEntity::getMcpServerId)
+                .toList());
+        resp.setToolCount(tools.size() + mcpServers.size());
         return resp;
     }
 
@@ -281,6 +323,17 @@ public class AgentServiceImpl implements AgentService {
                                 .orderByAsc(AgentToolEntity::getSortOrder))
                 .stream()
                 .map(this::convertToolToResponse)
+                .toList();
+    }
+
+    @Override
+    public List<Long> getAgentMcpServerIds(Long agentId) {
+        return agentMcpServerMapper.selectList(
+                        new LambdaQueryWrapper<AgentMcpServerEntity>()
+                                .eq(AgentMcpServerEntity::getAgentId, agentId)
+                                .orderByAsc(AgentMcpServerEntity::getSortOrder))
+                .stream()
+                .map(AgentMcpServerEntity::getMcpServerId)
                 .toList();
     }
 
@@ -340,6 +393,27 @@ public class AgentServiceImpl implements AgentService {
         }
 
         return wrapper;
+    }
+
+    private void saveAgentMcpServers(Long agentId, List<Long> mcpServerIds) {
+        int order = 0;
+        for (Long serverId : mcpServerIds) {
+            AgentMcpServerEntity entity = new AgentMcpServerEntity();
+            entity.setAgentId(agentId);
+            entity.setMcpServerId(serverId);
+            entity.setSortOrder(order++);
+            agentMcpServerMapper.insert(entity);
+        }
+    }
+
+    private Map<Long, String> getMcpNameMap(List<Long> serverIds) {
+        if (serverIds.isEmpty()) return Collections.emptyMap();
+        return mcpServerMapper.selectList(
+                        new LambdaQueryWrapper<McpServerEntity>()
+                                .in(McpServerEntity::getId, serverIds)
+                                .select(McpServerEntity::getId, McpServerEntity::getName))
+                .stream()
+                .collect(Collectors.toMap(McpServerEntity::getId, McpServerEntity::getName, (a, b) -> a));
     }
 
     private void saveAgentTools(Long agentId, List<AgentToolRequest> tools) {

@@ -1,6 +1,7 @@
 package com.hify.chat.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.agent.dto.AgentResponse;
 import com.hify.agent.dto.AgentToolResponse;
@@ -21,6 +22,8 @@ import com.hify.knowledge.dto.RagResp;
 import com.hify.knowledge.service.KnowledgeService;
 import com.hify.mcp.mcp.McpClientManager;
 import com.hify.mcp.mcp.ToolDef;
+import com.hify.mcp.mcp.ToolResult;
+import com.hify.provider.adapter.ProviderAdapter.ToolCall;
 import okhttp3.Call;
 import com.hify.provider.adapter.ChatRequest;
 import com.hify.provider.adapter.ProviderAdapter;
@@ -174,7 +177,7 @@ public class ChatServiceImpl implements ChatService {
             return toMessageResp(assistantMsg);
         }
 
-        List<Map<String, String>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
+        List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息
         ChatMessageEntity userMsg = new ChatMessageEntity();
@@ -185,25 +188,78 @@ public class ChatServiceImpl implements ChatService {
         messageMapper.insert(userMsg);
         autoTitle(session, req.getContent());
 
-        // 调用 LLM
-        ChatRequest chatReq = new ChatRequest(ctx.modelId, messages,
-                ctx.agent.getTemperature() != null ? ctx.agent.getTemperature().doubleValue() : 0.7, false);
-        String llmResponse = circuitBreakerService.executeWithProtection(
-                ctx.provider.getCode(),
-                () -> ctx.adapter.chat(ctx.provider.getBaseUrl(), ctx.authConfig, chatReq)
-        );
+        // 调用 LLM（支持 Function Calling）
+        List<ToolDef> tools = resolveAgentTools(ctx.agent.getId());
+        double temperature = ctx.agent.getTemperature() != null
+                ? ctx.agent.getTemperature().doubleValue() : 0.7;
+
+        String content = null;
+        String finishReason = "stop";
+        int totalTokens = 0;
+
+        for (int round = 0; round < 3; round++) {
+            ChatRequest chatReq = new ChatRequest(ctx.modelId, messages, temperature, false,
+                    tools != null ? tools : null);
+            String llmResponse = circuitBreakerService.executeWithProtection(
+                    ctx.provider.getCode(),
+                    () -> ctx.adapter.chat(ctx.provider.getBaseUrl(), ctx.authConfig, chatReq)
+            );
+            totalTokens += ctx.adapter.extractTokenCount(llmResponse);
+
+            List<ToolCall> toolCalls = ctx.adapter.extractToolCalls(llmResponse);
+            if (toolCalls == null || toolCalls.isEmpty() || tools == null) {
+                content = ctx.adapter.extractContent(llmResponse);
+                finishReason = ctx.adapter.extractFinishReason(llmResponse);
+                break;
+            }
+
+            // 追加 assistant 消息（含 tool calls）
+            String assistantContent = ctx.adapter.extractContent(llmResponse);
+            String reasoningContent = extractReasoning(llmResponse);
+            List<Map<String, Object>> toolCallMaps = new ArrayList<>();
+            for (ToolCall tc : toolCalls) {
+                Map<String, Object> func = new java.util.LinkedHashMap<>();
+                func.put("name", tc.getName());
+                func.put("arguments", toJson(tc.getArguments()));
+                toolCallMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
+                        "type", "function", "function", func));
+            }
+            Map<String, Object> assistantMsg = new java.util.LinkedHashMap<>();
+            assistantMsg.put("role", "assistant");
+            assistantMsg.put("content", assistantContent != null ? assistantContent : "");
+            if (reasoningContent != null) {
+                assistantMsg.put("reasoning_content", reasoningContent);
+            }
+            assistantMsg.put("tool_calls", toolCallMaps);
+            messages.add(assistantMsg);
+
+            // 执行工具调用并追加 tool 消息
+            for (ToolCall tc : toolCalls) {
+                ToolDef def = findToolDef(tools, tc.getName());
+                Long serverId = def != null ? def.getServerId() : null;
+                if (serverId == null) continue;
+                ToolResult tr = mcpClientManager.callTool(serverId, tc.getName(), tc.getArguments());
+                Map<String, Object> toolMsg = new java.util.LinkedHashMap<>();
+                toolMsg.put("role", "tool");
+                toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
+                toolMsg.put("content", tr.isSuccess() ? tr.getContent() : "Error: " + tr.getError());
+                messages.add(toolMsg);
+            }
+        }
+
+        // 如果 3 轮后仍为 null，取最后一条 assistant 消息
+        if (content == null) {
+            content = "抱歉，工具调用未能在规定轮数内完成。";
+        }
 
         int latency = (int) (System.currentTimeMillis() - start);
-        String content = ctx.adapter.extractContent(llmResponse);
-        String finishReason = ctx.adapter.extractFinishReason(llmResponse);
-        int tokenCount = ctx.adapter.extractTokenCount(llmResponse);
 
         // 保存助手消息
         ChatMessageEntity assistantMsg = new ChatMessageEntity();
         assistantMsg.setSessionId(sessionId);
         assistantMsg.setRole("assistant");
         assistantMsg.setContent(content);
-        assistantMsg.setTokenCount(tokenCount);
+        assistantMsg.setTokenCount(totalTokens);
         assistantMsg.setFinishReason(finishReason);
         assistantMsg.setLatencyMs(latency);
         messageMapper.insert(assistantMsg);
@@ -265,7 +321,7 @@ public class ChatServiceImpl implements ChatService {
             return wfEmitter;
         }
 
-        List<Map<String, String>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
+        List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息（事务内，SseEmitter 之前）
         ChatMessageEntity userMsg = new ChatMessageEntity();
@@ -278,8 +334,62 @@ public class ChatServiceImpl implements ChatService {
 
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
 
-        ChatRequest chatReq = new ChatRequest(ctx.modelId, messages,
-                ctx.agent.getTemperature() != null ? ctx.agent.getTemperature().doubleValue() : 0.7, true);
+        // 先执行 Function Calling 循环（同步），再流式返回最终结果
+        List<ToolDef> tools = resolveAgentTools(ctx.agent.getId());
+        double temperature = ctx.agent.getTemperature() != null
+                ? ctx.agent.getTemperature().doubleValue() : 0.7;
+
+        if (tools != null && !tools.isEmpty()) {
+            for (int round = 0; round < 3; round++) {
+                ChatRequest toolChatReq = new ChatRequest(ctx.modelId, messages, temperature, false,
+                        tools);
+                String respBody = circuitBreakerService.executeWithProtection(
+                        ctx.provider.getCode(),
+                        () -> ctx.adapter.chat(ctx.provider.getBaseUrl(), ctx.authConfig, toolChatReq)
+                );
+                List<ToolCall> toolCalls = ctx.adapter.extractToolCalls(respBody);
+                if (toolCalls == null || toolCalls.isEmpty()) {
+                    // LLM 最终决定不调工具 → 直接返回文本片段即可
+                    String assistantContent = ctx.adapter.extractContent(respBody);
+                    if (assistantContent != null && !assistantContent.isEmpty()) {
+                        messages.add(Map.<String, Object>of("role", "assistant", "content", assistantContent));
+                    }
+                    break;
+                }
+                String assistantContent = ctx.adapter.extractContent(respBody);
+                String reasoningContent = extractReasoning(respBody);
+                List<Map<String, Object>> tcMaps = new ArrayList<>();
+                for (ToolCall tc : toolCalls) {
+                    Map<String, Object> func = new java.util.LinkedHashMap<>();
+                    func.put("name", tc.getName());
+                    func.put("arguments", toJson(tc.getArguments()));
+                    tcMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
+                            "type", "function", "function", func));
+                }
+                Map<String, Object> asstMsg = new java.util.LinkedHashMap<>();
+                asstMsg.put("role", "assistant");
+                asstMsg.put("content", assistantContent != null ? assistantContent : "");
+                if (reasoningContent != null) {
+                    asstMsg.put("reasoning_content", reasoningContent);
+                }
+                asstMsg.put("tool_calls", tcMaps);
+                messages.add(asstMsg);
+                for (ToolCall tc : toolCalls) {
+                    ToolDef def = findToolDef(tools, tc.getName());
+                    Long serverId = def != null ? def.getServerId() : null;
+                    if (serverId == null) continue;
+                    ToolResult tr = mcpClientManager.callTool(serverId, tc.getName(), tc.getArguments());
+                    Map<String, Object> toolMsg = new java.util.LinkedHashMap<>();
+                    toolMsg.put("role", "tool");
+                    toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
+                    toolMsg.put("content", tr.isSuccess() ? tr.getContent() : "Error: " + tr.getError());
+                    messages.add(toolMsg);
+                }
+            }
+        }
+
+        ChatRequest chatReq = new ChatRequest(ctx.modelId, messages, temperature, true,
+                tools != null && !tools.isEmpty() ? tools : null);
 
         // 持有 OkHttp Call 引用，用于取消
         Call[] callHolder = new Call[1];
@@ -423,8 +533,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /** 构造消息列表：system prompt + 历史 + 当前用户消息 */
-    private List<Map<String, String>> buildMessages(Long sessionId, AgentResponse agent, String userContent) {
-        List<Map<String, String>> messages = new ArrayList<>();
+    private List<Map<String, Object>> buildMessages(Long sessionId, AgentResponse agent, String userContent) {
+        List<Map<String, Object>> messages = new ArrayList<>();
 
         // 系统提示词
         String systemPrompt = agent.getSystemPrompt();
@@ -445,7 +555,7 @@ public class ChatServiceImpl implements ChatService {
             }
         }
 
-        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(Map.<String, Object>of("role", "system", "content", systemPrompt));
 
         // 历史消息（受 maxRounds 限制）
         int maxRounds = agent.getConversationMaxRounds() != null ? agent.getConversationMaxRounds() : MAX_ROUNDS;
@@ -459,10 +569,10 @@ public class ChatServiceImpl implements ChatService {
         );
         for (int i = history.size() - 1; i >= 0; i--) {
             ChatMessageEntity msg = history.get(i);
-            messages.add(Map.of("role", msg.getRole(), "content", msg.getContent() != null ? msg.getContent() : ""));
+            messages.add(Map.<String, Object>of("role", msg.getRole(), "content", msg.getContent() != null ? msg.getContent() : ""));
         }
 
-        messages.add(Map.of("role", "user", "content", userContent));
+        messages.add(Map.<String, Object>of("role", "user", "content", userContent));
         return messages;
     }
 
@@ -531,17 +641,58 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /** 解析 Agent 绑定的 MCP 工具列表 */
+    /** 解析 Agent 绑定的 MCP 工具列表（新旧表双读） */
     private List<ToolDef> resolveAgentTools(Long agentId) {
-        List<AgentToolResponse> agentTools = agentService.getAgentTools(agentId);
-        if (agentTools == null || agentTools.isEmpty()) return null;
         List<ToolDef> tools = new ArrayList<>();
-        for (AgentToolResponse at : agentTools) {
-            if ("mcp".equals(at.getToolType()) && at.getMcpServerId() != null) {
-                tools.addAll(mcpClientManager.listTools(at.getMcpServerId()));
+
+        // 新表 agent_mcp_server：按服务绑定
+        List<Long> mcpServerIds = agentService.getAgentMcpServerIds(agentId);
+        if (mcpServerIds != null) {
+            for (Long serverId : mcpServerIds) {
+                tools.addAll(mcpClientManager.listTools(serverId));
             }
         }
+
+        // 旧表 agent_tool：按工具绑定（灰度期兼容）
+        List<AgentToolResponse> agentTools = agentService.getAgentTools(agentId);
+        if (agentTools != null) {
+            for (AgentToolResponse at : agentTools) {
+                if ("mcp".equals(at.getToolType()) && at.getMcpServerId() != null) {
+                    tools.addAll(mcpClientManager.listTools(at.getMcpServerId()));
+                }
+            }
+        }
+
         return tools.isEmpty() ? null : tools;
+    }
+
+    private ToolDef findToolDef(List<ToolDef> tools, String name) {
+        if (tools == null) return null;
+        return tools.stream().filter(t -> t.getName().equals(name)).findFirst().orElse(null);
+    }
+
+    private String toJson(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return "{}";
+        }
+    }
+
+    private String extractReasoning(String responseBody) {
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode choices = root.get("choices");
+            if (choices != null && choices.size() > 0) {
+                JsonNode message = choices.get(0).get("message");
+                if (message == null) message = choices.get(0).get("delta");
+                if (message != null && message.has("reasoning_content")) {
+                    return message.get("reasoning_content").asText();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /** 内部配置聚合 */

@@ -12,11 +12,9 @@
 CREATE TABLE IF NOT EXISTS mcp_server (
     id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
     name           VARCHAR(64)   NOT NULL COMMENT '服务名称',
-    command        VARCHAR(255)  DEFAULT NULL COMMENT '启动命令（stdio 传输）',
-    args_json      TEXT          DEFAULT NULL COMMENT '命令参数（JSON 数组）',
-    env_vars_json  TEXT          DEFAULT NULL COMMENT '环境变量（JSON 对象）',
-    url            VARCHAR(255)  DEFAULT NULL COMMENT '服务 URL（sse/streamable-http 传输）',
-    transport_type VARCHAR(32)   NOT NULL DEFAULT 'stdio' COMMENT '传输类型：stdio/sse/streamable-http',
+    url            VARCHAR(255)  NOT NULL COMMENT 'MCP 服务 HTTP 地址',
+    auth_config    JSON          DEFAULT NULL COMMENT '鉴权配置（Bearer Token / API Key 等）',
+    transport_type VARCHAR(32)   NOT NULL DEFAULT 'http' COMMENT '传输类型：http',
     status         TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '状态：0=禁用，1=启用',
     created_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
     updated_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
@@ -168,6 +166,24 @@ CREATE TABLE IF NOT EXISTS agent_tool (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 工具绑定';
 
 -- ----------------------------
+-- 7.1 Agent MCP 服务绑定（替代 agent_tool）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS agent_mcp_server (
+    id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
+    agent_id        BIGINT          NOT NULL COMMENT 'Agent ID',
+    mcp_server_id   BIGINT          NOT NULL COMMENT 'MCP 服务 ID',
+    sort_order      INT             DEFAULT 0 COMMENT '排序',
+    created_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted         TINYINT(1)      NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_agent_server (agent_id, mcp_server_id, deleted),
+    INDEX idx_agent (agent_id),
+    INDEX idx_mcp_server (mcp_server_id),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent MCP 服务绑定';
+
+-- ----------------------------
 -- 8. 供应商健康状态
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS provider_health (
@@ -287,3 +303,27 @@ CREATE TABLE IF NOT EXISTS node_execution (
 -- 14. Agent 新增 workflow_id 字段
 -- ----------------------------
 ALTER TABLE agent ADD COLUMN IF NOT EXISTS workflow_id BIGINT DEFAULT NULL COMMENT '绑定工作流 ID';
+
+-- ----------------------------
+-- 15. 数据迁移：agent_tool → agent_mcp_server
+-- ----------------------------
+INSERT INTO agent_mcp_server (agent_id, mcp_server_id, sort_order, created_at, updated_at)
+SELECT DISTINCT agent_id, mcp_server_id, 0, NOW(3), NOW(3)
+FROM agent_tool
+WHERE tool_type = 'mcp' AND mcp_server_id IS NOT NULL AND deleted = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM agent_mcp_server ams
+    WHERE ams.agent_id = agent_tool.agent_id
+      AND ams.mcp_server_id = agent_tool.mcp_server_id
+      AND ams.deleted = 0
+  );
+
+-- ----------------------------
+-- 16. mcp_server 结构迁移（删除 stdio 字段）
+-- ----------------------------
+ALTER TABLE mcp_server DROP COLUMN IF EXISTS command;
+ALTER TABLE mcp_server DROP COLUMN IF EXISTS args_json;
+ALTER TABLE mcp_server DROP COLUMN IF EXISTS env_vars_json;
+ALTER TABLE mcp_server MODIFY COLUMN url VARCHAR(255) NOT NULL COMMENT 'MCP 服务 HTTP 地址';
+ALTER TABLE mcp_server ADD COLUMN IF NOT EXISTS auth_config JSON DEFAULT NULL COMMENT '鉴权配置';
+ALTER TABLE mcp_server MODIFY COLUMN transport_type VARCHAR(32) NOT NULL DEFAULT 'http' COMMENT '传输类型：http';

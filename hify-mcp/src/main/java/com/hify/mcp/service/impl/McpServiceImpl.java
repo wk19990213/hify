@@ -45,10 +45,8 @@ public class McpServiceImpl implements McpService {
             throw BizException.notFound("MCP 服务器不存在");
         }
         if (req.getName() != null) entity.setName(req.getName());
-        if (req.getCommand() != null) entity.setCommand(req.getCommand());
-        if (req.getArgsJson() != null) entity.setArgsJson(req.getArgsJson());
-        if (req.getEnvVarsJson() != null) entity.setEnvVarsJson(req.getEnvVarsJson());
         if (req.getUrl() != null) entity.setUrl(req.getUrl());
+        if (req.getAuthConfig() != null) entity.setAuthConfig(req.getAuthConfig());
         if (req.getTransportType() != null) entity.setTransportType(req.getTransportType());
         if (req.getStatus() != null) entity.setStatus(req.getStatus());
         serverMapper.updateById(entity);

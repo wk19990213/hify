@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @RequiredArgsConstructor
 public class McpClientManager {
+
     private final McpServerMapper serverMapper;
     private final ObjectMapper objectMapper;
     private final Map<Long, McpClient> clients = new ConcurrentHashMap<>();
@@ -32,15 +33,33 @@ public class McpClientManager {
 
     public ToolResult callTool(Long serverId, String name,
                                Map<String, Object> arguments) {
+        long start = System.currentTimeMillis();
+        log.info("MCP tool call start: serverId={}, tool={}, args={}", serverId, name, arguments);
         try {
             McpClient client = getOrCreate(serverId);
-            return client.callTool(name, arguments);
+            ToolResult result = client.callTool(name, arguments);
+            long cost = System.currentTimeMillis() - start;
+            log.info("MCP tool call done: serverId={}, tool={}, cost={}ms, success={}",
+                    serverId, name, cost, result.isSuccess());
+            return result;
         } catch (Exception e) {
-            log.error("Failed to call tool {} on server {}", name, serverId, e);
+            long cost = System.currentTimeMillis() - start;
+            log.error("MCP tool call failed: serverId={}, tool={}, cost={}ms", serverId, name, cost, e);
             ToolResult r = new ToolResult();
             r.setSuccess(false);
             r.setError(e.getMessage());
             return r;
+        }
+    }
+
+    public boolean healthCheck(Long serverId) {
+        try {
+            McpClient client = getOrCreate(serverId);
+            client.listTools();
+            return true;
+        } catch (Exception e) {
+            log.warn("MCP health check failed for server {}", serverId, e.getMessage());
+            return false;
         }
     }
 
@@ -55,21 +74,7 @@ public class McpClientManager {
     }
 
     private McpTransport createTransport(McpServerEntity server) {
-        if ("sse".equals(server.getTransportType())) {
-            return new SseTransport(server.getUrl());
-        }
-        List<String> args = parseArgs(server.getArgsJson());
-        return new StdioTransport(server.getCommand(), args);
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> parseArgs(String argsJson) {
-        if (argsJson == null || argsJson.isBlank()) return List.of();
-        try {
-            return objectMapper.readValue(argsJson, List.class);
-        } catch (Exception e) {
-            return List.of(argsJson);
-        }
+        return new HttpJsonRpcTransport(server.getUrl(), server.getAuthConfig());
     }
 
     public void evict(Long serverId) {

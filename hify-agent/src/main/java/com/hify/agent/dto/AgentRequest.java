@@ -66,7 +66,12 @@ public class AgentRequest {
     private Integer sortOrder;
 
     /**
-     * 绑定工具列表
+     * 绑定工具列表（旧表 agent_tool，灰度期保留）
      */
     private List<AgentToolRequest> tools;
+
+    /**
+     * MCP 服务绑定列表（新表 agent_mcp_server）
+     */
+    private List<Long> mcpServerIds;
 }

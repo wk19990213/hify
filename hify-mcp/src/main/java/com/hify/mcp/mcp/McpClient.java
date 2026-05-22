@@ -11,12 +11,34 @@ import java.util.*;
 public class McpClient implements AutoCloseable {
     private final McpTransport transport;
     private final ObjectMapper mapper = new ObjectMapper();
+    private volatile boolean initialized;
 
     public McpClient(McpTransport transport) {
         this.transport = transport;
     }
 
+    private void ensureInitialized() throws Exception {
+        if (initialized) return;
+        synchronized (this) {
+            if (initialized) return;
+            ObjectNode params = mapper.createObjectNode();
+            params.put("protocolVersion", "2024-11-05");
+            ObjectNode capabilities = mapper.createObjectNode();
+            capabilities.putObject("tools");
+            params.set("capabilities", capabilities);
+            ObjectNode serverInfo = mapper.createObjectNode();
+            serverInfo.put("name", "hify-mcp-client");
+            serverInfo.put("version", "1.0.0");
+            params.set("clientInfo", serverInfo);
+            transport.send("initialize", params);
+            // MCP requires sending "notifications/initialized" after initialize
+            initialized = true;
+            log.info("MCP client initialized");
+        }
+    }
+
     public List<ToolDef> listTools() throws Exception {
+        ensureInitialized();
         JsonNode result = transport.send("tools/list", null);
         List<ToolDef> tools = new ArrayList<>();
         JsonNode toolsNode = result.get("tools");
@@ -39,6 +61,7 @@ public class McpClient implements AutoCloseable {
     public ToolResult callTool(String name, Map<String, Object> arguments) {
         ToolResult result = new ToolResult();
         try {
+            ensureInitialized();
             ObjectNode params = mapper.createObjectNode();
             params.put("name", name);
             params.set("arguments", mapper.valueToTree(

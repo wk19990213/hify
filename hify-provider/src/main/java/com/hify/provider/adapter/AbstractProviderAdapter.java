@@ -8,8 +8,9 @@ import com.hify.common.http.StreamCallback;
 import com.hify.mcp.mcp.ToolDef;
 import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.entity.ProviderEntity;
-import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,8 +23,9 @@ import java.util.Map;
  * 子类实现 {@link #buildUrl}、{@link #buildHeaders}、{@link #buildChatUrl} 来区分类型。
  * OpenAI 兼容格式作为默认实现。
  */
-@Slf4j
 public abstract class AbstractProviderAdapter implements ProviderAdapter {
+
+    protected final Logger log = LoggerFactory.getLogger(getClass());
 
     static final int TEST_TIMEOUT_MS = 10000;
 
