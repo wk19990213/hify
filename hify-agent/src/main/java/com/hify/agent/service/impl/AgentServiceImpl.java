@@ -121,6 +121,7 @@ public class AgentServiceImpl implements AgentService {
         Optional.ofNullable(req.getDescription()).ifPresent(entity::setDescription);
         Optional.ofNullable(req.getModelConfigId()).ifPresent(entity::setModelConfigId);
         Optional.ofNullable(req.getKbId()).ifPresent(entity::setKbId);
+        Optional.ofNullable(req.getWorkflowId()).ifPresent(entity::setWorkflowId);
         Optional.ofNullable(req.getSystemPrompt()).ifPresent(entity::setSystemPrompt);
         Optional.ofNullable(req.getConversationMaxRounds()).ifPresent(entity::setConversationMaxRounds);
         Optional.ofNullable(req.getTemperature()).ifPresent(entity::setTemperature);

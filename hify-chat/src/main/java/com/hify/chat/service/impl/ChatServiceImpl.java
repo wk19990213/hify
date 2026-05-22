@@ -28,6 +28,9 @@ import com.hify.provider.entity.ProviderModelEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderMapper;
 import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.workflow.dto.WorkflowInstanceResp;
+import com.hify.workflow.dto.WorkflowRunReq;
+import com.hify.workflow.service.WorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -58,6 +61,7 @@ public class ChatServiceImpl implements ChatService {
     private final ProviderAdapterFactory adapterFactory;
     private final CircuitBreakerService circuitBreakerService;
     private final KnowledgeService knowledgeService;
+    private final WorkflowService workflowService;
     private final ObjectMapper objectMapper;
 
     // ==================== 会话管理 ====================
@@ -134,6 +138,36 @@ public class ChatServiceImpl implements ChatService {
         ChatSessionEntity session = getSession(sessionId);
         AgentContext ctx = resolveContext(session);
 
+        // 检查 Agent 是否绑定了工作流
+        if (ctx.agent.getWorkflowId() != null) {
+            Map<String, Object> workflowInput = new java.util.HashMap<>();
+            workflowInput.put("user_message", req.getContent());
+            workflowInput.put("session_id", sessionId);
+            WorkflowRunReq runReq = new WorkflowRunReq();
+            runReq.setInput(workflowInput);
+            runReq.setSessionId(sessionId);
+            WorkflowInstanceResp wfResp = workflowService.run(ctx.agent.getWorkflowId(), runReq);
+
+            // 保存用户消息
+            ChatMessageEntity userMsg = new ChatMessageEntity();
+            userMsg.setSessionId(sessionId);
+            userMsg.setRole("user");
+            userMsg.setContent(req.getContent());
+            userMsg.setTokenCount(0);
+            messageMapper.insert(userMsg);
+            autoTitle(session, req.getContent());
+
+            // 保存助手消息（工作流输出）
+            String wfOutput = wfResp.getOutputJson();
+            ChatMessageEntity assistantMsg = new ChatMessageEntity();
+            assistantMsg.setSessionId(sessionId);
+            assistantMsg.setRole("assistant");
+            assistantMsg.setContent(wfOutput != null ? wfOutput : "工作流执行完成");
+            assistantMsg.setTokenCount(0);
+            messageMapper.insert(assistantMsg);
+            return toMessageResp(assistantMsg);
+        }
+
         List<Map<String, String>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息
@@ -178,6 +212,44 @@ public class ChatServiceImpl implements ChatService {
         long start = System.currentTimeMillis();
         ChatSessionEntity session = getSession(sessionId);
         AgentContext ctx = resolveContext(session);
+
+        // 检查 Agent 是否绑定了工作流
+        if (ctx.agent.getWorkflowId() != null) {
+            // 保存用户消息
+            ChatMessageEntity userMsg = new ChatMessageEntity();
+            userMsg.setSessionId(sessionId);
+            userMsg.setRole("user");
+            userMsg.setContent(req.getContent());
+            userMsg.setTokenCount(0);
+            messageMapper.insert(userMsg);
+            autoTitle(session, req.getContent());
+
+            SseEmitter wfEmitter = new SseEmitter(SSE_TIMEOUT_MS);
+            Map<String, Object> workflowInput = new java.util.HashMap<>();
+            workflowInput.put("user_message", req.getContent());
+            workflowInput.put("session_id", sessionId);
+            WorkflowRunReq runReq = new WorkflowRunReq();
+            runReq.setInput(workflowInput);
+            runReq.setSessionId(sessionId);
+            final Long workflowId = ctx.agent.getWorkflowId();
+
+            new Thread(() -> {
+                try {
+                    WorkflowInstanceResp wfResp = workflowService.run(workflowId, runReq);
+                    String wfOutput = wfResp.getOutputJson();
+                    if (wfOutput != null) {
+                        wfEmitter.send(SseEmitter.event().data(wfOutput));
+                    }
+                    wfEmitter.send(SseEmitter.event().data("[DONE]"));
+                    wfEmitter.complete();
+                } catch (Exception e) {
+                    wfEmitter.completeWithError(e);
+                }
+            }).start();
+
+            return wfEmitter;
+        }
+
         List<Map<String, String>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息（事务内，SseEmitter 之前）
@@ -278,6 +350,12 @@ public class ChatServiceImpl implements ChatService {
     /** Agent → ModelConfig → model_id → provider_model → Provider → Adapter */
     private AgentContext resolveContext(ChatSessionEntity session) {
         AgentResponse agent = agentService.getDetail(session.getAgentId());
+
+        // 工作流 Agent 不需要模型配置
+        if (agent.getWorkflowId() != null) {
+            return new AgentContext(agent, null, null, null, null);
+        }
+
         if (agent.getModelConfigId() == null) {
             throw BizException.paramError("Agent 未绑定模型配置");
         }

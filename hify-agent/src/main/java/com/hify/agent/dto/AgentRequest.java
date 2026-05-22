@@ -53,6 +53,11 @@ public class AgentRequest {
      */
     private Long kbId;
 
+    /**
+     * 绑定工作流 ID
+     */
+    private Long workflowId;
+
     private Integer status;
 
     /**

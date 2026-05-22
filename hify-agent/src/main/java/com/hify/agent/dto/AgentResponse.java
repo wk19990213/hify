@@ -60,6 +60,11 @@ public class AgentResponse {
     private Long kbId;
 
     /**
+     * 绑定工作流 ID
+     */
+    private Long workflowId;
+
+    /**
      * 状态：0=禁用，1=启用
      */
     private Integer status;
