@@ -184,3 +184,106 @@ CREATE TABLE IF NOT EXISTS provider_health (
     INDEX idx_provider_id (provider_id),
     INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商健康状态';
+
+-- ----------------------------
+-- 9. 工作流定义
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS workflow (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    name           VARCHAR(128)  NOT NULL COMMENT '工作流名称',
+    description    VARCHAR(512)  DEFAULT '' COMMENT '描述',
+    status         TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '0=禁用 1=启用',
+    created_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted        TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    INDEX idx_status (status),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作流定义';
+
+-- ----------------------------
+-- 10. 工作流节点
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS workflow_node (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    workflow_id    BIGINT        NOT NULL COMMENT '所属工作流 ID',
+    name           VARCHAR(64)   NOT NULL COMMENT '节点名称',
+    type           VARCHAR(16)   NOT NULL COMMENT '节点类型: llm/condition/rag/http',
+    config_json    JSON          DEFAULT NULL COMMENT '节点配置 JSON',
+    position_x     INT           DEFAULT 0 COMMENT 'X 坐标',
+    position_y     INT           DEFAULT 0 COMMENT 'Y 坐标',
+    created_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted        TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    INDEX idx_workflow_id (workflow_id),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作流节点';
+
+-- ----------------------------
+-- 11. 工作流连线
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS workflow_edge (
+    id              BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    workflow_id     BIGINT        NOT NULL COMMENT '所属工作流 ID',
+    source_node_id  BIGINT        NOT NULL COMMENT '源节点 ID',
+    target_node_id  BIGINT        NOT NULL COMMENT '目标节点 ID',
+    edge_type       VARCHAR(16)   NOT NULL DEFAULT 'normal' COMMENT 'normal/true/false/error',
+    condition_expr  VARCHAR(512)  DEFAULT NULL COMMENT '条件表达式',
+    sort_order      INT           DEFAULT 0 COMMENT '排序',
+    created_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted         TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    INDEX idx_workflow_id (workflow_id),
+    INDEX idx_source_node_id (source_node_id),
+    INDEX idx_deleted (deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作流连线';
+
+-- ----------------------------
+-- 12. 工作流执行实例
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS workflow_instance (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    workflow_id    BIGINT        NOT NULL COMMENT '工作流 ID',
+    session_id     BIGINT        DEFAULT NULL COMMENT '对话会话 ID',
+    trigger_type   VARCHAR(16)   NOT NULL DEFAULT 'api' COMMENT '触发类型: agent/api',
+    status         VARCHAR(16)   NOT NULL DEFAULT 'running' COMMENT 'running/success/failed',
+    input_json     JSON          DEFAULT NULL COMMENT '输入参数 JSON',
+    output_json    JSON          DEFAULT NULL COMMENT '最终输出 JSON',
+    error_msg      VARCHAR(500)  DEFAULT NULL COMMENT '失败原因',
+    started_at     DATETIME(3)   DEFAULT NULL COMMENT '开始时间',
+    finished_at    DATETIME(3)   DEFAULT NULL COMMENT '完成时间',
+    created_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    INDEX idx_workflow_id (workflow_id),
+    INDEX idx_status (status),
+    INDEX idx_session_id (session_id),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作流执行实例';
+
+-- ----------------------------
+-- 13. 节点执行记录
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS node_execution (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    instance_id    BIGINT        NOT NULL COMMENT '执行实例 ID',
+    node_id        BIGINT        NOT NULL COMMENT '节点 ID',
+    status         VARCHAR(16)   NOT NULL DEFAULT 'running' COMMENT 'running/success/failed/skipped',
+    input_json     JSON          DEFAULT NULL COMMENT '节点输入 JSON',
+    output_json    JSON          DEFAULT NULL COMMENT '节点输出 JSON',
+    error_msg      VARCHAR(500)  DEFAULT NULL COMMENT '错误信息',
+    retry_count    INT           DEFAULT 0 COMMENT '已重试次数',
+    started_at     DATETIME(3)   DEFAULT NULL COMMENT '开始时间',
+    finished_at    DATETIME(3)   DEFAULT NULL COMMENT '完成时间',
+    created_at     DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    INDEX idx_instance_id (instance_id),
+    INDEX idx_node_id (node_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='节点执行记录';
+
+-- ----------------------------
+-- 14. Agent 新增 workflow_id 字段
+-- ----------------------------
+ALTER TABLE agent ADD COLUMN IF NOT EXISTS workflow_id BIGINT DEFAULT NULL COMMENT '绑定工作流 ID';
