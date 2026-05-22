@@ -1,7 +1,12 @@
 package com.hify.mcp.service;
 
-/**
- * MCP服务接口
- */
+import com.hify.common.result.PageResult;
+import com.hify.mcp.dto.*;
+
 public interface McpService {
+    Long create(McpServerCreateReq req);
+    void update(Long id, McpServerUpdateReq req);
+    void delete(Long id);
+    PageResult<McpServerResp> list(McpServerListParams params);
+    McpServerResp getDetail(Long id);
 }
