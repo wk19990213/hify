@@ -76,7 +76,8 @@ import {
   ChatDotRound,
   Share,
   Fold,
-  Expand
+  Expand,
+  Tools
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -93,6 +94,7 @@ const menuItems = [
   { path: '/agent', label: 'Agent 管理', icon: User },
   { path: '/knowledge', label: '知识库', icon: Document },
   { path: '/workflows', label: '工作流', icon: Share },
+  { path: '/mcp-servers', label: 'MCP 管理', icon: Tools },
   { path: '/chat', label: '对话', icon: ChatDotRound },
 ]
 </script>
