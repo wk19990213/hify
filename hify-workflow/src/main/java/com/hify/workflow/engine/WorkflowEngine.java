@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.exception.BizException;
+import com.hify.mcp.mcp.ToolDef;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,7 @@ public class WorkflowEngine {
     private final ObjectMapper objectMapper;
     private final List<NodeExecutor> executors;
 
-    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, Long sessionId, String triggerType, Long modelConfigId) {
+    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, Long sessionId, String triggerType, Long modelConfigId, List<ToolDef> tools) {
         // 1. 加载工作流定义
         WorkflowEntity workflow = workflowMapper.selectById(workflowId);
         if (workflow == null || workflow.getDeleted() == 1) {
@@ -97,7 +98,7 @@ public class WorkflowEngine {
         variables.put("input", input);
 
         try {
-            Object lastOutput = executeNode(startNodeId, nodeMap, outEdges, variables, instance.getId(), modelConfigId);
+            Object lastOutput = executeNode(startNodeId, nodeMap, outEdges, variables, instance.getId(), modelConfigId, tools);
             instance.setStatus("success");
             try {
                 instance.setOutputJson(objectMapper.writeValueAsString(lastOutput));
@@ -117,7 +118,8 @@ public class WorkflowEngine {
 
     private Object executeNode(Long nodeId, Map<Long, WorkflowNodeEntity> nodeMap,
                                Map<Long, List<WorkflowEdgeEntity>> outEdges,
-                               Map<String, Object> variables, Long instanceId, Long modelConfigId) {
+                               Map<String, Object> variables, Long instanceId, Long modelConfigId,
+                               List<ToolDef> tools) {
         WorkflowNodeEntity node = nodeMap.get(nodeId);
         if (node == null) return null;
 
@@ -148,6 +150,7 @@ public class WorkflowEngine {
         ctx.setNode(node);
         ctx.setVariables(variables);
         ctx.setModelConfigId(modelConfigId);
+        ctx.setTools(tools);
 
         int maxRetries = getMaxRetries(node);
         NodeExecResult result = null;
@@ -175,7 +178,7 @@ public class WorkflowEngine {
             List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
             for (WorkflowEdgeEntity edge : edges) {
                 if ("error".equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
+                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
                 }
             }
             throw new RuntimeException("节点 " + node.getName() + " 执行失败: " + result.getErrorMsg());
@@ -201,7 +204,7 @@ public class WorkflowEngine {
             String targetEdgeType = conditionResult ? "true" : "false";
             for (WorkflowEdgeEntity edge : edges) {
                 if (targetEdgeType.equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
+                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
                 }
             }
             return result.getOutput();
@@ -210,7 +213,7 @@ public class WorkflowEngine {
         // 普通节点：取第一条 normal 边
         for (WorkflowEdgeEntity edge : edges) {
             if ("normal".equals(edge.getEdgeType())) {
-                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
+                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
             }
         }
 

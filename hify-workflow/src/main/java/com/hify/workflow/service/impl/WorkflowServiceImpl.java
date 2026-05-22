@@ -149,7 +149,7 @@ public class WorkflowServiceImpl implements WorkflowService {
     public WorkflowInstanceResp run(Long id, WorkflowRunReq req) {
         Map<String, Object> input = req.getInput() != null ? req.getInput() : Map.of();
         String triggerType = req.getSessionId() != null ? "agent" : "api";
-        WorkflowInstanceEntity instance = workflowEngine.execute(id, input, req.getSessionId(), triggerType, req.getModelConfigId());
+        WorkflowInstanceEntity instance = workflowEngine.execute(id, input, req.getSessionId(), triggerType, req.getModelConfigId(), req.getTools());
         return toInstanceResp(instance);
     }
 

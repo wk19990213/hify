@@ -3,6 +3,7 @@ package com.hify.chat.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.agent.dto.AgentResponse;
+import com.hify.agent.dto.AgentToolResponse;
 import com.hify.agent.service.AgentService;
 import com.hify.chat.dto.ChatMessageResp;
 import com.hify.chat.dto.ChatSessionResp;
@@ -18,6 +19,8 @@ import com.hify.common.http.StreamCallback;
 import com.hify.common.resilience.CircuitBreakerService;
 import com.hify.knowledge.dto.RagResp;
 import com.hify.knowledge.service.KnowledgeService;
+import com.hify.mcp.mcp.McpClientManager;
+import com.hify.mcp.mcp.ToolDef;
 import okhttp3.Call;
 import com.hify.provider.adapter.ChatRequest;
 import com.hify.provider.adapter.ProviderAdapter;
@@ -62,6 +65,7 @@ public class ChatServiceImpl implements ChatService {
     private final CircuitBreakerService circuitBreakerService;
     private final KnowledgeService knowledgeService;
     private final WorkflowService workflowService;
+    private final McpClientManager mcpClientManager;
     private final ObjectMapper objectMapper;
 
     // ==================== 会话管理 ====================
@@ -146,6 +150,8 @@ public class ChatServiceImpl implements ChatService {
             WorkflowRunReq runReq = new WorkflowRunReq();
             runReq.setInput(workflowInput);
             runReq.setSessionId(sessionId);
+            runReq.setModelConfigId(ctx.agent.getModelConfigId());
+            runReq.setTools(resolveAgentTools(ctx.agent.getId()));
             WorkflowInstanceResp wfResp = workflowService.run(ctx.agent.getWorkflowId(), runReq);
 
             // 保存用户消息
@@ -158,11 +164,11 @@ public class ChatServiceImpl implements ChatService {
             autoTitle(session, req.getContent());
 
             // 保存助手消息（工作流输出）
-            String wfOutput = wfResp.getOutputJson();
+            String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
             ChatMessageEntity assistantMsg = new ChatMessageEntity();
             assistantMsg.setSessionId(sessionId);
             assistantMsg.setRole("assistant");
-            assistantMsg.setContent(wfOutput != null ? wfOutput : "工作流执行完成");
+            assistantMsg.setContent(wfOutput);
             assistantMsg.setTokenCount(0);
             messageMapper.insert(assistantMsg);
             return toMessageResp(assistantMsg);
@@ -231,16 +237,25 @@ public class ChatServiceImpl implements ChatService {
             WorkflowRunReq runReq = new WorkflowRunReq();
             runReq.setInput(workflowInput);
             runReq.setSessionId(sessionId);
+            runReq.setModelConfigId(ctx.agent.getModelConfigId());
+            runReq.setTools(resolveAgentTools(ctx.agent.getId()));
             final Long workflowId = ctx.agent.getWorkflowId();
 
             new Thread(() -> {
                 try {
                     WorkflowInstanceResp wfResp = workflowService.run(workflowId, runReq);
-                    String wfOutput = wfResp.getOutputJson();
-                    if (wfOutput != null) {
-                        wfEmitter.send(SseEmitter.event().data(wfOutput));
-                    }
+                    String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
+                    wfEmitter.send(SseEmitter.event().data(wfOutput));
                     wfEmitter.send(SseEmitter.event().data("[DONE]"));
+
+                    // 保存助手消息
+                    ChatMessageEntity assistantMsg = new ChatMessageEntity();
+                    assistantMsg.setSessionId(sessionId);
+                    assistantMsg.setRole("assistant");
+                    assistantMsg.setContent(wfOutput);
+                    assistantMsg.setTokenCount(0);
+                    messageMapper.insert(assistantMsg);
+
                     wfEmitter.complete();
                 } catch (Exception e) {
                     wfEmitter.completeWithError(e);
@@ -480,6 +495,53 @@ public class ChatServiceImpl implements ChatService {
         resp.setMessages(msgs);
         resp.setCreatedAt(s.getCreatedAt());
         return resp;
+    }
+
+    /**
+     * 从工作流输出 JSON 中提取人类可读文本。
+     * LLM 节点返回 content，HTTP 返回 body，Condition 返回布尔描述，RAG 返回来源数量。
+     */
+    @SuppressWarnings("unchecked")
+    private String extractWorkflowOutput(String outputJson) {
+        if (outputJson == null || outputJson.isBlank()) {
+            return "工作流执行完成";
+        }
+        try {
+            Map<String, Object> output = objectMapper.readValue(outputJson, Map.class);
+            if (output.containsKey("content") && output.get("content") != null) {
+                return output.get("content").toString();
+            }
+            if (output.containsKey("body") && output.get("body") != null) {
+                return output.get("body").toString();
+            }
+            if (output.containsKey("result") && output.get("result") != null) {
+                boolean result = Boolean.parseBoolean(output.get("result").toString());
+                return "条件判断结果: " + result;
+            }
+            if (output.containsKey("sources") && output.get("sources") != null) {
+                Object sources = output.get("sources");
+                if (sources instanceof List) {
+                    return "检索到 " + ((List<?>) sources).size() + " 条参考资料";
+                }
+                return sources.toString();
+            }
+            return outputJson;
+        } catch (Exception e) {
+            return outputJson;
+        }
+    }
+
+    /** 解析 Agent 绑定的 MCP 工具列表 */
+    private List<ToolDef> resolveAgentTools(Long agentId) {
+        List<AgentToolResponse> agentTools = agentService.getAgentTools(agentId);
+        if (agentTools == null || agentTools.isEmpty()) return null;
+        List<ToolDef> tools = new ArrayList<>();
+        for (AgentToolResponse at : agentTools) {
+            if ("mcp".equals(at.getToolType()) && at.getMcpServerId() != null) {
+                tools.addAll(mcpClientManager.listTools(at.getMcpServerId()));
+            }
+        }
+        return tools.isEmpty() ? null : tools;
     }
 
     /** 内部配置聚合 */
