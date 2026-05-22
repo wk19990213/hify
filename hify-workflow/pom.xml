@@ -41,6 +41,12 @@
             <artifactId>hify-mcp</artifactId>
         </dependency>
 
+        <!-- 依赖 knowledge 模块 -->
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-knowledge</artifactId>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
