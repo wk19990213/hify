@@ -26,7 +26,7 @@ public class WorkflowEngine {
     private final ObjectMapper objectMapper;
     private final List<NodeExecutor> executors;
 
-    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, Long sessionId, String triggerType) {
+    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, Long sessionId, String triggerType, Long modelConfigId) {
         // 1. 加载工作流定义
         WorkflowEntity workflow = workflowMapper.selectById(workflowId);
         if (workflow == null || workflow.getDeleted() == 1) {
@@ -97,7 +97,7 @@ public class WorkflowEngine {
         variables.put("input", input);
 
         try {
-            Object lastOutput = executeNode(startNodeId, nodeMap, outEdges, variables, instance.getId());
+            Object lastOutput = executeNode(startNodeId, nodeMap, outEdges, variables, instance.getId(), modelConfigId);
             instance.setStatus("success");
             try {
                 instance.setOutputJson(objectMapper.writeValueAsString(lastOutput));
@@ -117,7 +117,7 @@ public class WorkflowEngine {
 
     private Object executeNode(Long nodeId, Map<Long, WorkflowNodeEntity> nodeMap,
                                Map<Long, List<WorkflowEdgeEntity>> outEdges,
-                               Map<String, Object> variables, Long instanceId) {
+                               Map<String, Object> variables, Long instanceId, Long modelConfigId) {
         WorkflowNodeEntity node = nodeMap.get(nodeId);
         if (node == null) return null;
 
@@ -147,6 +147,7 @@ public class WorkflowEngine {
         NodeExecContext ctx = new NodeExecContext();
         ctx.setNode(node);
         ctx.setVariables(variables);
+        ctx.setModelConfigId(modelConfigId);
 
         int maxRetries = getMaxRetries(node);
         NodeExecResult result = null;
@@ -174,13 +175,15 @@ public class WorkflowEngine {
             List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
             for (WorkflowEdgeEntity edge : edges) {
                 if ("error".equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId);
+                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
                 }
             }
             throw new RuntimeException("节点 " + node.getName() + " 执行失败: " + result.getErrorMsg());
         }
 
-        // 存储输出到变量
+        // 存储输出到变量，key 使用节点名（去重），同时保留节点 ID 兼容旧表达式
+        String varKey = generateVarKey(node.getName(), variables);
+        variables.put(varKey, result.getOutput());
         variables.put(String.valueOf(nodeId), result.getOutput());
 
         // 根据出边决定下一节点
@@ -198,7 +201,7 @@ public class WorkflowEngine {
             String targetEdgeType = conditionResult ? "true" : "false";
             for (WorkflowEdgeEntity edge : edges) {
                 if (targetEdgeType.equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId);
+                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
                 }
             }
             return result.getOutput();
@@ -207,7 +210,7 @@ public class WorkflowEngine {
         // 普通节点：取第一条 normal 边
         for (WorkflowEdgeEntity edge : edges) {
             if ("normal".equals(edge.getEdgeType())) {
-                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId);
+                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId);
             }
         }
 
@@ -221,6 +224,13 @@ public class WorkflowEngine {
             }
         }
         return null;
+    }
+
+    private String generateVarKey(String name, Map<String, Object> variables) {
+        if (!variables.containsKey(name)) return name;
+        int suffix = 2;
+        while (variables.containsKey(name + "_" + suffix)) suffix++;
+        return name + "_" + suffix;
     }
 
     private int getMaxRetries(WorkflowNodeEntity node) {

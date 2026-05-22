@@ -197,6 +197,12 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
         return result;
     }
 
+    /** 默认无工具调用，OpenAiAdapter / AnthropicAdapter 覆盖 */
+    @Override
+    public List<ToolCall> extractToolCalls(String responseBody) {
+        return List.of();
+    }
+
     String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);

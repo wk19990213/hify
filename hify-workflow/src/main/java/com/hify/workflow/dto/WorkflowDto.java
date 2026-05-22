@@ -24,6 +24,7 @@ public class WorkflowDto {
 
     @Data
     public static class NodeItem {
+        private Long id;
         private String name;
         @NotBlank(message = "节点类型不能为空")
         private String type;
