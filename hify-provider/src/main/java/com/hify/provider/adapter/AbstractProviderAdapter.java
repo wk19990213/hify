@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.http.LlmApiException;
 import com.hify.common.http.LlmHttpClient;
 import com.hify.common.http.StreamCallback;
+import com.hify.mcp.mcp.ToolDef;
 import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.entity.ProviderEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,7 @@ import okhttp3.Call;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -101,6 +103,9 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
         body.put("messages", request.messages());
         body.put("temperature", request.temperature());
         body.put("stream", request.stream());
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            body.put("tools", formatTools(request.tools()));
+        }
         return body;
     }
 
@@ -175,6 +180,21 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
 
     static String normalizeBaseUrl(String baseUrl) {
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    /** 将 ToolDef 列表转换为 OpenAI 工具格式，AnthropicAdapter 可覆盖 */
+    protected List<Map<String, Object>> formatTools(List<ToolDef> tools) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ToolDef t : tools) {
+            Map<String, Object> func = new LinkedHashMap<>();
+            func.put("name", t.getName());
+            func.put("description", t.getDescription());
+            if (t.getInputSchema() != null) {
+                func.put("parameters", t.getInputSchema());
+            }
+            result.add(Map.of("type", "function", "function", func));
+        }
+        return result;
     }
 
     String toJson(Object obj) {

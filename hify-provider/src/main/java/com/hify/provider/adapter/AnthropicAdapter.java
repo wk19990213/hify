@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.http.LlmHttpClient;
 import com.hify.common.http.StreamCallback;
+import com.hify.mcp.mcp.ToolDef;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +69,10 @@ public class AnthropicAdapter extends AbstractProviderAdapter {
             }
         }
         body.put("messages", anthropicMsgs);
+
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            body.put("tools", formatTools(request.tools()));
+        }
         return body;
     }
 
@@ -120,5 +127,43 @@ public class AnthropicAdapter extends AbstractProviderAdapter {
         } catch (Exception ignored) {
         }
         return 0;
+    }
+
+    @Override
+    protected List<Map<String, Object>> formatTools(List<ToolDef> tools) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ToolDef t : tools) {
+            Map<String, Object> tool = new LinkedHashMap<>();
+            tool.put("name", t.getName());
+            tool.put("description", t.getDescription());
+            tool.put("input_schema", t.getInputSchema() != null
+                    ? t.getInputSchema() : Map.of("type", "object"));
+            result.add(tool);
+        }
+        return result;
+    }
+
+    @Override
+    public List<ToolCall> extractToolCalls(String responseBody) {
+        List<ToolCall> calls = new ArrayList<>();
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode content = root.get("content");
+            if (content != null && content.isArray()) {
+                for (JsonNode block : content) {
+                    if ("tool_use".equals(block.get("type").asText())) {
+                        ToolCall call = new ToolCall();
+                        call.setId(block.get("id").asText());
+                        call.setName(block.get("name").asText());
+                        call.setArguments(objectMapper.convertValue(
+                                block.get("input"), Map.class));
+                        calls.add(call);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract Anthropic tool calls", e);
+        }
+        return calls;
     }
 }

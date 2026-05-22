@@ -23,6 +23,12 @@
             <artifactId>hify-common</artifactId>
         </dependency>
 
+        <!-- MCP 工具定义 -->
+        <dependency>
+            <groupId>com.hify</groupId>
+            <artifactId>hify-mcp</artifactId>
+        </dependency>
+
         <!-- HTTP 客户端 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -1,5 +1,6 @@
 package com.hify.provider.adapter;
 
+import com.hify.mcp.mcp.ToolDef;
 import java.util.List;
 import java.util.Map;
 
@@ -8,5 +9,11 @@ public record ChatRequest(
         String model,
         List<Map<String, String>> messages,
         double temperature,
-        boolean stream
-) {}
+        boolean stream,
+        List<ToolDef> tools
+) {
+    public ChatRequest(String model, List<Map<String, String>> messages,
+                       double temperature, boolean stream) {
+        this(model, messages, temperature, stream, null);
+    }
+}

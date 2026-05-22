@@ -48,4 +48,15 @@ public interface ProviderAdapter {
 
     /** 获取可用模型 ID 列表 */
     List<String> listModelIds(String baseUrl, Map<String, Object> authConfig);
+
+    /** 从同步响应中提取工具调用列表 */
+    List<ToolCall> extractToolCalls(String responseBody);
+
+    /** LLM 返回的工具调用 */
+    @lombok.Data
+    class ToolCall {
+        private String id;
+        private String name;
+        private Map<String, Object> arguments;
+    }
 }
