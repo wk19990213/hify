@@ -194,7 +194,8 @@ import {
   Document,
   DataLine,
   Monitor,
-  Share
+  Share,
+  Tools
 } from '@element-plus/icons-vue'
 
 const currentPath = ref('/dashboard')
@@ -213,6 +214,7 @@ const menuItems = [
   { path: '/chat', label: '对话', icon: ChatDotRound },
   { path: '/workflows', label: '工作流', icon: Share },
   { path: '/knowledge', label: '知识库', icon: Folder },
+  { path: '/mcp-servers', label: 'MCP 管理', icon: Tools },
   { path: '/settings', label: '设置', icon: Setting },
 ]
 

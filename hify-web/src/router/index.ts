@@ -58,6 +58,12 @@ const routes: RouteRecordRaw[] = [
     name: 'WorkflowEdit',
     component: () => import('@/views/workflow/WorkflowEditor.vue'),
     meta: { title: '编辑工作流' }
+  },
+  {
+    path: '/mcp-servers',
+    name: 'McpServerList',
+    component: () => import('@/views/mcp/McpServerList.vue'),
+    meta: { title: 'MCP 管理' }
   }
 ]
 
