@@ -1,6 +1,7 @@
 import { get, post, put, del } from '@/utils/request'
 
 export interface NodeItem {
+  id?: number
   name: string
   type: 'llm' | 'condition' | 'rag' | 'http'
   configJson?: string
