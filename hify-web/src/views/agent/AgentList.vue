@@ -116,9 +116,11 @@
           </div>
           <el-checkbox-group v-else v-model="form._selectedMcpServers">
             <div v-for="opt in mcpServerOptions" :key="opt.serverId" style="margin-bottom: 4px">
-              <el-checkbox :label="opt.serverId" :value="opt.serverId">
-                <span style="font-weight:500">{{ opt.serverName }}</span>
-                <span class="tool-desc">{{ opt.toolCount }} 个工具 — {{ opt.description }}</span>
+              <el-checkbox :label="opt.serverId" :value="opt.serverId" :disabled="opt.hasError">
+                <span style="font-weight:500" :style="opt.hasError ? 'color: var(--el-color-danger)' : ''">{{ opt.serverName }}</span>
+                <span class="tool-desc" :style="opt.hasError ? 'color: var(--el-color-danger)' : ''">
+                  {{ opt.hasError ? opt.description : `${opt.toolCount} 个工具 — ${opt.description}` }}
+                </span>
               </el-checkbox>
             </div>
           </el-checkbox-group>
@@ -224,6 +226,7 @@ interface McpServerOption {
   serverName: string
   toolCount: number
   description: string
+  hasError?: boolean
 }
 const mcpServerOptions = ref<McpServerOption[]>([])
 
@@ -238,8 +241,9 @@ onMounted(async () => {
     mcpServerOptions.value = servers.map(s => ({
       serverId: s.serverId,
       serverName: s.serverName,
-      toolCount: s.tools.length,
-      description: s.tools.map(t => t.name).join(', '),
+      toolCount: s.errorMsg ? 0 : s.tools.length,
+      description: s.errorMsg || s.tools.map(t => t.name).join(', '),
+      hasError: !!s.errorMsg,
     }))
   } catch {
     // 获取选项失败，下拉框为空
@@ -308,6 +312,12 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
   try {
     dialogRef.value?.setLoading(true)
 
+    const selected = (formData._selectedMcpServers || []) as any[]
+    // Element Plus el-checkbox 会将 :label 的数值转为字符串，需转回 number
+    const cleanIds: number[] = selected
+      .map((v: any) => Number(v))
+      .filter((n: number) => Number.isFinite(n) && n > 0)
+
     const req: AgentRequest = {
       name: formData.name,
       code: formData.code,
@@ -320,8 +330,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
       status: formData.status,
       sortOrder: formData.sortOrder,
       workflowId: formData.workflowId,
-      mcpServerIds: (formData._selectedMcpServers || []).length > 0
-        ? formData._selectedMcpServers : undefined,
+      mcpServerIds: cleanIds.length > 0 ? cleanIds : undefined,
     }
 
     if (isEdit) {
@@ -333,8 +342,10 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
     notifySuccess(isEdit ? '编辑成功' : '新增成功')
     dialogRef.value?.close()
     tableRef.value?.refresh(true)
-  } catch {
-    notifyError('操作失败', '请稍后重试')
+  } catch (e: any) {
+    console.error('Agent save failed', e)
+    const msg = e?.response?.data?.message || e?.message || '请稍后重试'
+    notifyError('操作失败', msg)
   } finally {
     dialogRef.value?.setLoading(false)
   }

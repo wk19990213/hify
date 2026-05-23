@@ -11,4 +11,5 @@ public class McpServerToolsResp {
     private Long serverId;
     private String serverName;
     private List<ToolDef> tools;
+    private String errorMsg;
 }

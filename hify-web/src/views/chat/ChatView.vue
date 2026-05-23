@@ -132,7 +132,13 @@ const selectSession = async (id: number) => {
 }
 
 const handleSelectSession = (s: ChatSession) => selectSession(s.sessionId)
-const handleNewChat = () => createNewSession()
+const handleNewChat = () => {
+  if (!agentId.value) {
+    notifyError('请先选择一个 Agent')
+    return
+  }
+  createNewSession()
+}
 
 const renderMarkdown = (text: string) => md.render(text)
 

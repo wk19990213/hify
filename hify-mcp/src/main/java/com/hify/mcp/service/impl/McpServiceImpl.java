@@ -103,7 +103,12 @@ public class McpServiceImpl implements McpService {
             McpServerToolsResp resp = new McpServerToolsResp();
             resp.setServerId(s.getId());
             resp.setServerName(s.getName());
-            resp.setTools(clientManager.listTools(s.getId()));
+            try {
+                resp.setTools(clientManager.listTools(s.getId()));
+            } catch (Exception e) {
+                resp.setTools(List.of());
+                resp.setErrorMsg("服务连接失败: " + e.getMessage());
+            }
             result.add(resp);
         }
         return result;

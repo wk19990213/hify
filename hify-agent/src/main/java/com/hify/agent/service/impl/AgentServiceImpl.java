@@ -1,6 +1,7 @@
 package com.hify.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.hify.agent.dto.AgentListParams;
 import com.hify.agent.dto.AgentRequest;
 import com.hify.agent.dto.AgentResponse;
@@ -151,10 +152,8 @@ public class AgentServiceImpl implements AgentService {
 
         // 更新 MCP 服务绑定（新表 agent_mcp_server）
         if (req.getMcpServerIds() != null) {
-            agentMcpServerMapper.delete(
-                    new LambdaQueryWrapper<AgentMcpServerEntity>()
-                            .eq(AgentMcpServerEntity::getAgentId, id)
-            );
+            // 先软删除所有当前绑定，然后重新插入或激活新绑定
+            agentMcpServerMapper.softDeleteByAgentId(id);
             if (!req.getMcpServerIds().isEmpty()) {
                 saveAgentMcpServers(id, req.getMcpServerIds());
             }
@@ -179,10 +178,7 @@ public class AgentServiceImpl implements AgentService {
                 new LambdaQueryWrapper<AgentToolEntity>()
                         .eq(AgentToolEntity::getAgentId, id)
         );
-        agentMcpServerMapper.delete(
-                new LambdaQueryWrapper<AgentMcpServerEntity>()
-                        .eq(AgentMcpServerEntity::getAgentId, id)
-        );
+        agentMcpServerMapper.softDeleteByAgentId(id);
 
         log.info("Agent deleted: id={}, name={}", id, entity.getName());
     }
@@ -398,11 +394,7 @@ public class AgentServiceImpl implements AgentService {
     private void saveAgentMcpServers(Long agentId, List<Long> mcpServerIds) {
         int order = 0;
         for (Long serverId : mcpServerIds) {
-            AgentMcpServerEntity entity = new AgentMcpServerEntity();
-            entity.setAgentId(agentId);
-            entity.setMcpServerId(serverId);
-            entity.setSortOrder(order++);
-            agentMcpServerMapper.insert(entity);
+            agentMcpServerMapper.insertOrReactivate(agentId, serverId, order++);
         }
     }
 

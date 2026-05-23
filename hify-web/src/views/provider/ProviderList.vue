@@ -28,13 +28,17 @@
       </template>
 
       <template #health="{ row }">
-        <template v-if="row.health">
-          <el-tag :type="healthTagType(row.health.status)" size="small">
-            {{ healthLabel(row.health.status) }}
-          </el-tag>
-          <span v-if="row.health.avgLatencyMs" class="health-latency">{{ row.health.avgLatencyMs }}ms</span>
-        </template>
-        <el-tag v-else type="info" size="small">未知</el-tag>
+        <div class="health-cell">
+          <template v-if="row.health">
+            <el-tag :type="healthTagType(row.health.status)" size="small">
+              {{ healthLabel(row.health.status) }}
+            </el-tag>
+            <span v-if="row.health.avgLatencyMs" class="health-latency" :title="`${row.health.avgLatencyMs}ms`">
+              {{ row.health.avgLatencyMs }}ms
+            </span>
+          </template>
+          <el-tag v-else type="info" size="small">未知</el-tag>
+        </div>
       </template>
 
       <template #modelCount="{ row }">
@@ -307,10 +311,20 @@ const formatDateTime = (datetime: string) => {
   white-space: nowrap;
 }
 
+.health-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .health-latency {
-  margin-left: 8px;
   font-size: 12px;
   color: var(--text-secondary);
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 768px) {

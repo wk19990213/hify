@@ -57,6 +57,7 @@ export interface McpServerWithTools {
   serverId: number
   serverName: string
   tools: { name: string; description: string }[]
+  errorMsg?: string
 }
 
 /** 获取所有 MCP Server 的工具列表（用于 Agent 绑定 UI） */
