@@ -161,10 +161,6 @@ public class LlmNodeExecutor implements NodeExecutor {
         return allTools;
     }
 
-    private String toToolCallJson(ProviderAdapter.ToolCall tc) {
-        return toJson(Map.of("name", tc.getName(), "arguments", tc.getArguments()));
-    }
-
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);

@@ -255,17 +255,6 @@ const menuItems = [
   transition: opacity 0.2s ease;
 }
 
-/* 未读徽章 */
-.menu-badge {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: linear-gradient(135deg, var(--primary-500), var(--accent-500));
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: white;
-}
-
 /* 折叠时居中 */
 .sidebar.collapsed .sidebar-item {
   justify-content: center;

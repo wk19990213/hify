@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts" generic="T extends Record<string, any>">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import type { PageResult } from '@/types/common'
 
@@ -131,9 +131,6 @@ const page = ref(1)
 const pageSize = ref(props.defaultPageSize)
 const sortField = ref('')
 const sortOrder = ref('')
-
-// 计算属性：是否有数据
-const hasData = computed(() => tableData.value.length > 0)
 
 // 获取数据
 const fetchData = async () => {

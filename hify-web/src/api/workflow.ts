@@ -52,42 +52,6 @@ export interface WorkflowListParams {
   status?: number
 }
 
-export interface NodeExecutionResp {
-  id: number
-  nodeId: number
-  nodeName: string
-  nodeType: string
-  status: string
-  inputJson: string
-  outputJson: string
-  errorMsg: string
-  retryCount: number
-  startedAt: string
-  finishedAt: string
-}
-
-export interface WorkflowInstanceResp {
-  id: number
-  workflowId: number
-  workflowName: string
-  sessionId: number
-  triggerType: string
-  status: string
-  inputJson: string
-  outputJson: string
-  errorMsg: string
-  startedAt: string
-  finishedAt: string
-  createdAt: string
-  nodeExecutions?: NodeExecutionResp[]
-}
-
-export interface WorkflowRunReq {
-  input?: Record<string, any>
-  sessionId?: number
-}
-
-
 export const getWorkflowList = (params?: WorkflowListParams) =>
   get<PageResult<Workflow>>('/v1/workflows', params)
 
@@ -102,12 +66,3 @@ export const updateWorkflow = (id: number, data: WorkflowUpdateReq) =>
 
 export const deleteWorkflow = (id: number) =>
   del<void>(`/v1/workflows/${id}`)
-
-export const runWorkflow = (id: number, data?: WorkflowRunReq) =>
-  post<WorkflowInstanceResp>(`/v1/workflows/${id}/run`, data)
-
-export const getRunHistory = (workflowId?: number, page?: number, pageSize?: number) =>
-  get<PageResult<WorkflowInstanceResp>>('/v1/workflows/runs', { workflowId, page, pageSize })
-
-export const getRunDetail = (id: number) =>
-  get<WorkflowInstanceResp>(`/v1/workflows/runs/${id}`)

@@ -9,7 +9,8 @@ import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Redis 工具类
+ * Redis 工具类 — 预留供 Cache-Aside 缓存策略使用。
+ * techdebt-skip: deadcode（见 .claude/techdebt-rules.json）
  */
 @Slf4j
 @Component

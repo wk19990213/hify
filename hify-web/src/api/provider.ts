@@ -98,10 +98,6 @@ export const getProviderList = (params?: ProviderListParams) =>
 export const createProvider = (data: ProviderRequest) =>
   post<number>('/v1/providers', data)
 
-/** 详情 → 含 modelConfigs + health */
-export const getProviderDetail = (id: number) =>
-  get<Provider>(`/v1/providers/${id}`)
-
 /** 更新 */
 export const updateProvider = (id: number, data: ProviderRequest) =>
   put<void>(`/v1/providers/${id}`, data)

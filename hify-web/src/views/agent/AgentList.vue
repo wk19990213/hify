@@ -177,7 +177,6 @@ import {
 import type { Agent, AgentRequest } from '@/api/agent'
 import { getWorkflowList } from '@/api/workflow'
 import { getAllMcpTools, type McpServerWithTools } from '@/api/mcpServer'
-import type { AgentToolRequest } from '@/api/agent'
 
 // ── 表格列 ──────────────────────────────────────────
 

@@ -33,8 +33,5 @@ export const sendMessage = (sessionId: number, content: string) =>
 export const getChatHistory = (sessionId: number) =>
   get<ChatMessage[]>(`/v1/chat/sessions/${sessionId}/messages`)
 
-export const endChatSession = (sessionId: number) =>
-  put<void>(`/v1/chat/sessions/${sessionId}/end`)
-
 export const deleteSession = (sessionId: number) =>
   del<void>(`/v1/chat/sessions/${sessionId}`)

@@ -98,10 +98,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
-import type { PageResult } from '@/types/common'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
@@ -113,7 +112,7 @@ import {
   deleteProvider,
   testConnection,
 } from '@/api/provider'
-import type { Provider, ProviderRequest, ProviderHealth } from '@/api/provider'
+import type { Provider, ProviderRequest } from '@/api/provider'
 
 // ── 类型标签映射 ──────────────────────────────────────
 

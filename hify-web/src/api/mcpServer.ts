@@ -38,9 +38,6 @@ export const getMcpServerList = (params?: McpServerListParams) =>
 export const createMcpServer = (data: McpServerRequest) =>
   post<number>('/v1/mcp-servers', data)
 
-export const getMcpServerDetail = (id: number) =>
-  get<McpServer>(`/v1/mcp-servers/${id}`)
-
 export const updateMcpServer = (id: number, data: McpServerRequest) =>
   put<void>(`/v1/mcp-servers/${id}`, data)
 

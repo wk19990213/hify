@@ -75,15 +75,6 @@ export interface AgentListParams {
   modelConfigId?: number
 }
 
-/** 批量状态更新请求 */
-export interface BatchStatusRequest {
-  ids: number[]
-  status: number
-}
-
-/** 分页结果 */
-
-
 // ── API 方法 ───────────────────────────────────────────
 
 /** 分页列表 → 返回 PageResult<Agent> */
@@ -105,7 +96,3 @@ export const updateAgent = (id: number, data: AgentRequest) =>
 /** 删除 */
 export const deleteAgent = (id: number) =>
   del<void>(`/v1/agents/${id}`)
-
-/** 批量更新状态 */
-export const batchUpdateAgentStatus = (data: BatchStatusRequest) =>
-  post<void>('/v1/agents/batch-status', data)
