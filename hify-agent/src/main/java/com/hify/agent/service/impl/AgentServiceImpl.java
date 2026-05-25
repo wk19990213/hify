@@ -193,61 +193,7 @@ public class AgentServiceImpl implements AgentService {
                 .map(this::convertToResponse)
                 .toList();
 
-        // 批量填充：模型配置名称 + 工具数量
-        List<Long> agentIds = responses.stream()
-                .map(AgentResponse::getId)
-                .toList();
-        if (!agentIds.isEmpty()) {
-            // 填充 modelConfigName
-            List<Long> modelConfigIds = responses.stream()
-                    .map(AgentResponse::getModelConfigId)
-                    .filter(id -> id != null)
-                    .distinct()
-                    .toList();
-            if (!modelConfigIds.isEmpty()) {
-                var modelNameMap = modelConfigMapper.selectList(
-                                new LambdaQueryWrapper<ModelConfigEntity>()
-                                        .in(ModelConfigEntity::getId, modelConfigIds)
-                                        .select(ModelConfigEntity::getId, ModelConfigEntity::getName))
-                        .stream()
-                        .collect(Collectors.toMap(ModelConfigEntity::getId, ModelConfigEntity::getName, (a, b) -> a));
-                for (AgentResponse resp : responses) {
-                    if (resp.getModelConfigId() != null) {
-                        resp.setModelConfigName(modelNameMap.get(resp.getModelConfigId()));
-                    }
-                }
-            }
-
-            var toolCountMap = agentToolMapper.selectList(
-                            new LambdaQueryWrapper<AgentToolEntity>()
-                                    .in(AgentToolEntity::getAgentId, agentIds))
-                    .stream()
-                    .collect(Collectors.groupingBy(
-                            AgentToolEntity::getAgentId,
-                            Collectors.counting()));
-
-            var mcpServerRecords = agentMcpServerMapper.selectList(
-                            new LambdaQueryWrapper<AgentMcpServerEntity>()
-                                    .in(AgentMcpServerEntity::getAgentId, agentIds));
-
-            var mcpServerCountMap = mcpServerRecords.stream()
-                    .collect(Collectors.groupingBy(
-                            AgentMcpServerEntity::getAgentId,
-                            Collectors.counting()));
-
-            var mcpServerIdsMap = mcpServerRecords.stream()
-                    .collect(Collectors.groupingBy(
-                            AgentMcpServerEntity::getAgentId,
-                            Collectors.mapping(AgentMcpServerEntity::getMcpServerId,
-                                    Collectors.toList())));
-
-            for (AgentResponse resp : responses) {
-                long oldCount = toolCountMap.getOrDefault(resp.getId(), 0L);
-                long newCount = mcpServerCountMap.getOrDefault(resp.getId(), 0L);
-                resp.setToolCount((int) (oldCount + newCount));
-                resp.setMcpServerIds(mcpServerIdsMap.getOrDefault(resp.getId(), List.of()));
-            }
-        }
+        enrichAgentResponses(responses);
 
         return PageResult.ok(
                 responses,
@@ -255,6 +201,60 @@ public class AgentServiceImpl implements AgentService {
                 pageResult.getCurrent(),
                 pageResult.getSize()
         );
+    }
+
+    /** 批量填充关联字段：modelConfigName + toolCount + mcpServerIds */
+    private void enrichAgentResponses(List<AgentResponse> responses) {
+        List<Long> agentIds = responses.stream()
+                .map(AgentResponse::getId)
+                .toList();
+        if (agentIds.isEmpty()) return;
+
+        // 填充 modelConfigName
+        List<Long> modelConfigIds = responses.stream()
+                .map(AgentResponse::getModelConfigId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (!modelConfigIds.isEmpty()) {
+            var modelNameMap = modelConfigMapper.selectList(
+                            new LambdaQueryWrapper<ModelConfigEntity>()
+                                    .in(ModelConfigEntity::getId, modelConfigIds)
+                                    .select(ModelConfigEntity::getId, ModelConfigEntity::getName))
+                    .stream()
+                    .collect(Collectors.toMap(ModelConfigEntity::getId, ModelConfigEntity::getName, (a, b) -> a));
+            for (AgentResponse resp : responses) {
+                if (resp.getModelConfigId() != null) {
+                    resp.setModelConfigName(modelNameMap.get(resp.getModelConfigId()));
+                }
+            }
+        }
+
+        // 统计工具数量（agent_tool + agent_mcp_server）
+        var toolCountMap = agentToolMapper.selectList(
+                        new LambdaQueryWrapper<AgentToolEntity>()
+                                .in(AgentToolEntity::getAgentId, agentIds))
+                .stream()
+                .collect(Collectors.groupingBy(AgentToolEntity::getAgentId, Collectors.counting()));
+
+        var mcpServerRecords = agentMcpServerMapper.selectList(
+                new LambdaQueryWrapper<AgentMcpServerEntity>()
+                        .in(AgentMcpServerEntity::getAgentId, agentIds));
+
+        var mcpServerCountMap = mcpServerRecords.stream()
+                .collect(Collectors.groupingBy(AgentMcpServerEntity::getAgentId, Collectors.counting()));
+
+        var mcpServerIdsMap = mcpServerRecords.stream()
+                .collect(Collectors.groupingBy(
+                        AgentMcpServerEntity::getAgentId,
+                        Collectors.mapping(AgentMcpServerEntity::getMcpServerId, Collectors.toList())));
+
+        for (AgentResponse resp : responses) {
+            long oldCount = toolCountMap.getOrDefault(resp.getId(), 0L);
+            long newCount = mcpServerCountMap.getOrDefault(resp.getId(), 0L);
+            resp.setToolCount((int) (oldCount + newCount));
+            resp.setMcpServerIds(mcpServerIdsMap.getOrDefault(resp.getId(), List.of()));
+        }
     }
 
     @Override

@@ -1,4 +1,5 @@
 import { get, post, del } from '@/utils/request'
+import type { PageResult } from '@/types/common'
 
 export interface KnowledgeBase {
   id: number
@@ -30,12 +31,6 @@ export interface RagResp {
   latencyMs: number
 }
 
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
-}
 
 export const createKB = (name: string, description?: string) =>
   post<KnowledgeBase>(`/v1/knowledge/bases?name=${encodeURIComponent(name)}&description=${encodeURIComponent(description || '')}`)

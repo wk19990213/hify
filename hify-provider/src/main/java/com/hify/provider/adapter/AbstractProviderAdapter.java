@@ -2,9 +2,11 @@ package com.hify.provider.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.exception.BizException;
 import com.hify.common.http.LlmApiException;
 import com.hify.common.http.LlmHttpClient;
 import com.hify.common.http.StreamCallback;
+import com.hify.common.util.UrlSecurityValidator;
 import com.hify.mcp.mcp.ToolDef;
 import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.entity.ProviderEntity;
@@ -55,6 +57,14 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
 
     @Override
     public ConnectionTestResult testConnection(ProviderEntity provider, Map<String, Object> authConfig) {
+        // SSRF 防护：验证 baseUrl
+        if (!UrlSecurityValidator.isValidUrl(provider.getBaseUrl())) {
+            ConnectionTestResult result = new ConnectionTestResult();
+            result.setSuccess(false);
+            result.setErrorMessage("不安全的 URL: 仅允许 HTTPS 且不能是内网地址");
+            return result;
+        }
+
         long start = System.currentTimeMillis();
         ConnectionTestResult result = new ConnectionTestResult();
 
@@ -84,6 +94,9 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
 
     @Override
     public String chat(String baseUrl, Map<String, Object> authConfig, ChatRequest request) {
+        // SSRF 防护：验证 baseUrl
+        UrlSecurityValidator.validateUrl(baseUrl, "baseUrl");
+
         Map<String, String> headers = buildHeaders(authConfig);
         headers.put("Content-Type", "application/json");
         String body = toJson(buildOpenAiBody(request));
@@ -92,6 +105,9 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
 
     @Override
     public Call streamChat(String baseUrl, Map<String, Object> authConfig, ChatRequest request, StreamCallback callback) {
+        // SSRF 防护：验证 baseUrl
+        UrlSecurityValidator.validateUrl(baseUrl, "baseUrl");
+
         Map<String, String> headers = buildHeaders(authConfig);
         headers.put("Content-Type", "application/json");
         String body = toJson(buildOpenAiBody(request));
@@ -150,6 +166,7 @@ public abstract class AbstractProviderAdapter implements ProviderAdapter {
 
     @Override
     public List<String> listModelIds(String baseUrl, Map<String, Object> authConfig) {
+        UrlSecurityValidator.validateUrl(baseUrl, "baseUrl");
         List<String> ids = new ArrayList<>();
         try {
             Map<String, String> headers = buildHeaders(authConfig);

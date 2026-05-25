@@ -123,17 +123,7 @@ public class WorkflowEngine {
         WorkflowNodeEntity node = nodeMap.get(nodeId);
         if (node == null) return null;
 
-        // 创建节点执行记录
-        NodeExecutionEntity exec = new NodeExecutionEntity();
-        exec.setInstanceId(instanceId);
-        exec.setNodeId(nodeId);
-        exec.setStatus("running");
-        exec.setRetryCount(0);
-        exec.setStartedAt(LocalDateTime.now());
-        try {
-            exec.setInputJson(objectMapper.writeValueAsString(variables));
-        } catch (Exception ignored) {}
-        nodeExecutionMapper.insert(exec);
+        NodeExecutionEntity exec = prepareNodeExecution(nodeId, instanceId, variables);
 
         // 获取执行器
         NodeExecutor executor = findExecutor(node.getType());
@@ -145,33 +135,8 @@ public class WorkflowEngine {
             throw new RuntimeException("未知节点类型: " + node.getType());
         }
 
-        // 执行节点（含重试）
-        NodeExecContext ctx = new NodeExecContext();
-        ctx.setNode(node);
-        ctx.setVariables(variables);
-        ctx.setModelConfigId(modelConfigId);
-        ctx.setTools(tools);
-
-        int maxRetries = getMaxRetries(node);
-        NodeExecResult result = null;
-        for (int retry = 0; retry <= maxRetries; retry++) {
-            result = executor.execute(ctx);
-            if (result.isSuccess()) break;
-            if (retry < maxRetries) {
-                log.warn("Node {} retry {}/{}: {}", nodeId, retry + 1, maxRetries, result.getErrorMsg());
-                exec.setRetryCount(retry + 1);
-                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-            }
-        }
-
-        // 更新执行记录
-        exec.setStatus(result.isSuccess() ? "success" : "failed");
-        exec.setErrorMsg(result.getErrorMsg());
-        exec.setFinishedAt(LocalDateTime.now());
-        try {
-            exec.setOutputJson(objectMapper.writeValueAsString(result.getOutput()));
-        } catch (Exception ignored) {}
-        nodeExecutionMapper.updateById(exec);
+        NodeExecResult result = executeWithRetry(executor, node, nodeId, variables,
+                modelConfigId, tools, exec);
 
         // 失败时检查 error 边
         if (!result.isSuccess()) {
@@ -218,6 +183,53 @@ public class WorkflowEngine {
         }
 
         return result.getOutput();
+    }
+
+    /** 带重试执行节点并更新执行记录 */
+    private NodeExecResult executeWithRetry(NodeExecutor executor, WorkflowNodeEntity node,
+            Long nodeId, Map<String, Object> variables, Long modelConfigId,
+            List<ToolDef> tools, NodeExecutionEntity exec) {
+        NodeExecContext ctx = new NodeExecContext();
+        ctx.setNode(node);
+        ctx.setVariables(variables);
+        ctx.setModelConfigId(modelConfigId);
+        ctx.setTools(tools);
+
+        int maxRetries = getMaxRetries(node);
+        NodeExecResult result = null;
+        for (int retry = 0; retry <= maxRetries; retry++) {
+            result = executor.execute(ctx);
+            if (result.isSuccess()) break;
+            if (retry < maxRetries) {
+                log.warn("Node {} retry {}/{}: {}", nodeId, retry + 1, maxRetries, result.getErrorMsg());
+                exec.setRetryCount(retry + 1);
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+            }
+        }
+
+        exec.setStatus(result.isSuccess() ? "success" : "failed");
+        exec.setErrorMsg(result.getErrorMsg());
+        exec.setFinishedAt(LocalDateTime.now());
+        try {
+            exec.setOutputJson(objectMapper.writeValueAsString(result.getOutput()));
+        } catch (Exception ignored) {}
+        nodeExecutionMapper.updateById(exec);
+        return result;
+    }
+
+    private NodeExecutionEntity prepareNodeExecution(Long nodeId, Long instanceId,
+                                                       Map<String, Object> variables) {
+        NodeExecutionEntity exec = new NodeExecutionEntity();
+        exec.setInstanceId(instanceId);
+        exec.setNodeId(nodeId);
+        exec.setStatus("running");
+        exec.setRetryCount(0);
+        exec.setStartedAt(LocalDateTime.now());
+        try {
+            exec.setInputJson(objectMapper.writeValueAsString(variables));
+        } catch (Exception ignored) {}
+        nodeExecutionMapper.insert(exec);
+        return exec;
     }
 
     private NodeExecutor findExecutor(String type) {

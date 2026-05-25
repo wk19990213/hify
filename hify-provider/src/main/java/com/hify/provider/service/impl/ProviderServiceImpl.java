@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
+import com.hify.common.util.UrlSecurityValidator;
 import com.hify.common.util.PageHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hify.provider.adapter.AbstractProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
@@ -76,6 +78,8 @@ public class ProviderServiceImpl implements ProviderService {
         }
         entity.setAuthConfig(encryptAuthConfig(req.getAuthConfig()));
         providerMapper.insert(entity);
+        // SSRF 防护
+        UrlSecurityValidator.validateUrl(entity.getBaseUrl(), "baseUrl");
         // 自动发现模型并同步到 model_config
         syncModels(entity, req.getAuthConfig());
         return entity.getId();
@@ -87,54 +91,63 @@ public class ProviderServiceImpl implements ProviderService {
             ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
             List<String> modelIds = adapter.listModelIds(provider.getBaseUrl(), authConfig);
             for (String modelId : modelIds) {
-                String lower = modelId.toLowerCase();
-                if (lower.contains("embed") || lower.contains("rerank") || lower.contains("image")
-                        || lower.contains("ocr") || lower.contains("tts") || lower.contains("asr")
-                        || lower.contains("caption") || lower.contains("lora")) continue;
-
-                // 1. UPSERT provider_model
-                var existPm = providerModelMapper.selectCount(new LambdaQueryWrapper<ProviderModelEntity>()
-                        .eq(ProviderModelEntity::getProviderId, provider.getId())
-                        .eq(ProviderModelEntity::getModelId, modelId));
-                if (existPm == 0) {
-                    ProviderModelEntity pm = new ProviderModelEntity();
-                    pm.setProviderId(provider.getId());
-                    pm.setModelId(modelId);
-                    providerModelMapper.insert(pm);
-                }
-
-                // 2. 按 model_id 查找 model_config（全局唯一）
-                ModelConfigEntity mc = modelConfigMapper.selectOne(
-                        new LambdaQueryWrapper<ModelConfigEntity>()
-                                .eq(ModelConfigEntity::getModelId, modelId)
-                                .eq(ModelConfigEntity::getDeleted, 0));
-
-                // 3. 从 provider_model 重新计算 provider_count（仅统计未删除的 provider）
-                long count = providerModelMapper.selectCount(
-                        new LambdaQueryWrapper<ProviderModelEntity>()
-                                .eq(ProviderModelEntity::getModelId, modelId));
-
-                if (mc != null) {
-                    mc.setProviderCount((int) count);
-                    if (mc.getStatus() == 0 && count > 0) {
-                        mc.setStatus(1); // 有新提供商，重新启用
-                    }
-                    modelConfigMapper.updateById(mc);
-                } else {
-                    mc = new ModelConfigEntity();
-                    mc.setProviderId(provider.getId());
-                    mc.setModelId(modelId);
-                    mc.setName(modelId);
-                    mc.setCode(modelId.replace("/", "-").replace(":", "-"));
-                    mc.setStatus(1);
-                    mc.setSortOrder(0);
-                    mc.setProviderCount(1);
-                    modelConfigMapper.insert(mc);
-                }
+                if (shouldSkipModel(modelId)) continue;
+                syncSingleModel(provider, modelId);
             }
             log.info("Synced {} models for provider {}", modelIds.size(), provider.getName());
         } catch (Exception e) {
             log.warn("Failed to sync models for provider {}: {}", provider.getName(), e.getMessage());
+        }
+    }
+
+    /** 过滤非对话模型（Embedding/Rerank/Image/TTS 等） */
+    private boolean shouldSkipModel(String modelId) {
+        String lower = modelId.toLowerCase();
+        return lower.contains("embed") || lower.contains("rerank") || lower.contains("image")
+                || lower.contains("ocr") || lower.contains("tts") || lower.contains("asr")
+                || lower.contains("caption") || lower.contains("lora");
+    }
+
+    /** 同步单个模型：UPSERT provider_model + UPSERT model_config */
+    private void syncSingleModel(ProviderEntity provider, String modelId) {
+        // 1. UPSERT provider_model
+        var existPm = providerModelMapper.selectCount(new LambdaQueryWrapper<ProviderModelEntity>()
+                .eq(ProviderModelEntity::getProviderId, provider.getId())
+                .eq(ProviderModelEntity::getModelId, modelId));
+        if (existPm == 0) {
+            ProviderModelEntity pm = new ProviderModelEntity();
+            pm.setProviderId(provider.getId());
+            pm.setModelId(modelId);
+            providerModelMapper.insert(pm);
+        }
+
+        // 2. 按 model_id 查找 model_config（全局唯一）
+        ModelConfigEntity mc = modelConfigMapper.selectOne(
+                new LambdaQueryWrapper<ModelConfigEntity>()
+                        .eq(ModelConfigEntity::getModelId, modelId)
+                        .eq(ModelConfigEntity::getDeleted, 0));
+
+        // 3. 从 provider_model 重新计算 provider_count
+        long count = providerModelMapper.selectCount(
+                new LambdaQueryWrapper<ProviderModelEntity>()
+                        .eq(ProviderModelEntity::getModelId, modelId));
+
+        if (mc != null) {
+            mc.setProviderCount((int) count);
+            if (mc.getStatus() == 0 && count > 0) {
+                mc.setStatus(1);
+            }
+            modelConfigMapper.updateById(mc);
+        } else {
+            mc = new ModelConfigEntity();
+            mc.setProviderId(provider.getId());
+            mc.setModelId(modelId);
+            mc.setName(modelId);
+            mc.setCode(modelId.replace("/", "-").replace(":", "-"));
+            mc.setStatus(1);
+            mc.setSortOrder(0);
+            mc.setProviderCount(1);
+            modelConfigMapper.insert(mc);
         }
     }
 
@@ -194,10 +207,11 @@ public class ProviderServiceImpl implements ProviderService {
                     mc.setStatus(0); // 无提供商，停用
                 } else if (mc.getProviderId().equals(id)) {
                     // 将 provider_id 指向另一个可用提供商
-                    ProviderModelEntity alt = providerModelMapper.selectOne(
+                    Page<ProviderModelEntity> altPage = providerModelMapper.selectPage(
+                            Page.of(1, 1),
                             new LambdaQueryWrapper<ProviderModelEntity>()
-                                    .eq(ProviderModelEntity::getModelId, modelId)
-                                    .last("LIMIT 1"));
+                                    .eq(ProviderModelEntity::getModelId, modelId));
+                    ProviderModelEntity alt = altPage.getRecords().isEmpty() ? null : altPage.getRecords().get(0);
                     if (alt != null) {
                         mc.setProviderId(alt.getProviderId());
                     }

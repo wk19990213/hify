@@ -65,6 +65,7 @@
 <script setup lang="ts" generic="T extends Record<string, any>">
 import { ref, computed, watch, onMounted } from 'vue'
 import { Document } from '@element-plus/icons-vue'
+import type { PageResult } from '@/types/common'
 
 // 列配置类型
 export interface TableColumn<T = any> {
@@ -77,14 +78,6 @@ export interface TableColumn<T = any> {
   fixed?: 'left' | 'right' | boolean
   slot?: string
   formatter?: (val: any, row: T) => string
-}
-
-// 分页结果类型
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
 }
 
 // API 类型

@@ -166,6 +166,7 @@ import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
+import { formatDateTime } from '@/utils/date'
 import { get } from '@/utils/request'
 import {
   getAgentList,
@@ -353,11 +354,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
 
 // ── 工具函数 ────────────────────────────────────────
 
-const formatDateTime = (datetime: string) => {
-  if (!datetime) return '-'
-  const d = new Date(datetime)
-  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
+
 </script>
 
 <style scoped>

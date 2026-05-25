@@ -71,8 +71,10 @@
 
             <template v-if="currentNode.type === 'llm'">
               <el-form-item label="做什么">
-                <el-input v-model="llmPrompt" type="textarea" :rows="5"
-                  :placeholder="llmPlaceholder" />
+                <el-input
+                  v-model="llmPrompt" type="textarea" :rows="5"
+                  :placeholder="llmPlaceholder"
+                />
                 <div class="type-hint">告诉 AI 要做什么。可以用 <code v-pre>{{节点名.字段}}</code> 引用前面步骤的结果</div>
               </el-form-item>
               <el-form-item label="最多重试">

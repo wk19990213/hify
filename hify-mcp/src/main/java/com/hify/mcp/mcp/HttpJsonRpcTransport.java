@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.hify.common.util.UrlSecurityValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -24,6 +25,7 @@ public class HttpJsonRpcTransport implements McpTransport {
     private final AtomicInteger requestId = new AtomicInteger(1);
 
     public HttpJsonRpcTransport(String url, String authConfig) {
+        UrlSecurityValidator.validateUrl(url, "mcpUrl");
         this.url = url;
         this.authHeaders = parseAuthConfig(authConfig);
     }

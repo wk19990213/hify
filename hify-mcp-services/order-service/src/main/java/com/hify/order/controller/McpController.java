@@ -90,14 +90,24 @@ public class McpController {
             text = order.map(o -> {
                 try { return mapper.writeValueAsString(o); }
                 catch (Exception e) { return "{}"; }
-            }).orElse("{\"error\":\"订单不存在: " + orderId + "\"}");
+            }).orElseGet(() -> {
+                ObjectNode errNode = mapper.createObjectNode();
+                errNode.put("error", "订单不存在");
+                errNode.put("orderId", orderId);
+                try { return mapper.writeValueAsString(errNode); }
+                catch (Exception e) { return "{}"; }
+            });
         } else if ("list_orders".equals(name)) {
             String status = arguments.has("status") ? arguments.get("status").asText() : null;
             var orders = orderService.listOrders(status);
             try { text = mapper.writeValueAsString(orders); }
             catch (Exception e) { text = "[]"; }
         } else {
-            text = "{\"error\":\"未知工具: " + name + "\"}";
+            ObjectNode errNode = mapper.createObjectNode();
+            errNode.put("error", "未知工具");
+            errNode.put("toolName", name);
+            try { text = mapper.writeValueAsString(errNode); }
+            catch (Exception e) { text = "{}"; }
         }
 
         ObjectNode result = mapper.createObjectNode();

@@ -100,10 +100,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
-import HifyTable, { type TableColumn, type PageResult } from '@/components/HifyTable.vue'
+import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
+import type { PageResult } from '@/types/common'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
+import { formatDateTime } from '@/utils/date'
 import {
   getProviderList,
   createProvider,
@@ -256,11 +258,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
 
 // ── 工具函数 ────────────────────────────────────────
 
-const formatDateTime = (datetime: string) => {
-  if (!datetime) return '-'
-  const d = new Date(datetime)
-  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
+
 </script>
 
 <style scoped>

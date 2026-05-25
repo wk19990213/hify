@@ -2,6 +2,7 @@ package com.hify.knowledge.controller;
 
 import com.hify.common.result.PageResult;
 import com.hify.common.result.Result;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import com.hify.knowledge.dto.DocumentResp;
 import com.hify.knowledge.dto.KnowledgeBaseResp;
 import com.hify.knowledge.dto.RagResp;
@@ -35,6 +36,7 @@ public class KnowledgeController {
         return Result.ok();
     }
 
+    @RateLimiter(name = "knowledge-upload-rate-limiter")
     @PostMapping("/bases/{kbId}/documents")
     public Result<DocumentResp> uploadDocument(@PathVariable("kbId") Long kbId,
                                                 @RequestParam("file") MultipartFile file) {

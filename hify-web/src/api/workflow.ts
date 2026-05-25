@@ -1,4 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
+import type { PageResult } from '@/types/common'
 
 export interface NodeItem {
   id?: number
@@ -86,12 +87,6 @@ export interface WorkflowRunReq {
   sessionId?: number
 }
 
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
-}
 
 export const getWorkflowList = (params?: WorkflowListParams) =>
   get<PageResult<Workflow>>('/v1/workflows', params)

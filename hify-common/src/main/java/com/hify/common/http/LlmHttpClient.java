@@ -37,6 +37,8 @@ public class LlmHttpClient {
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
 
         this.syncClient = new OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
@@ -45,6 +47,8 @@ public class LlmHttpClient {
                 .build();
 
         this.streamClient = new OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)

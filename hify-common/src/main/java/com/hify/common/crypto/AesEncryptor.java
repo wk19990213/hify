@@ -29,16 +29,22 @@ public final class AesEncryptor {
 
     static {
         String keyHex = System.getenv("HIFY_ENCRYPTION_KEY");
+        SecretKey key = null;
+        boolean enabled = false;
         if (keyHex != null && keyHex.length() == 64) {
-            byte[] keyBytes = HexFormat.of().parseHex(keyHex);
-            MASTER_KEY = new SecretKeySpec(keyBytes, "AES");
-            ENABLED = true;
-            log.info("AesEncryptor initialized with HIFY_ENCRYPTION_KEY");
+            try {
+                byte[] keyBytes = HexFormat.of().parseHex(keyHex);
+                key = new SecretKeySpec(keyBytes, "AES");
+                enabled = true;
+                log.info("AesEncryptor initialized with HIFY_ENCRYPTION_KEY");
+            } catch (IllegalArgumentException e) {
+                log.error("HIFY_ENCRYPTION_KEY is not valid hex. AesEncryptor disabled.", e);
+            }
         } else {
-            MASTER_KEY = null;
-            ENABLED = false;
             log.warn("HIFY_ENCRYPTION_KEY not set or invalid length (need 64 hex chars). AesEncryptor disabled, plaintext mode.");
         }
+        MASTER_KEY = key;
+        ENABLED = enabled;
     }
 
     private AesEncryptor() {
@@ -59,8 +65,8 @@ public final class AesEncryptor {
             buffer.put(ciphertext);
             return Base64.getEncoder().encodeToString(buffer.array());
         } catch (Exception e) {
-            log.error("AES encrypt failed, falling back to plaintext", e);
-            return plaintext;
+            log.error("AES encrypt failed", e);
+            throw new RuntimeException("AES encryption failed", e);
         }
     }
 
@@ -78,8 +84,8 @@ public final class AesEncryptor {
             cipher.init(Cipher.DECRYPT_MODE, MASTER_KEY, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
             return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            log.error("AES decrypt failed, returning ciphertext as-is", e);
-            return ciphertext;
+            log.error("AES decrypt failed", e);
+            throw new RuntimeException("AES decryption failed", e);
         }
     }
 }

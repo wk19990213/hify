@@ -1,4 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
+import type { PageResult } from '@/types/common'
 
 // ── 类型定义 ───────────────────────────────────────────
 
@@ -81,12 +82,7 @@ export interface BatchStatusRequest {
 }
 
 /** 分页结果 */
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
-}
+
 
 // ── API 方法 ───────────────────────────────────────────
 

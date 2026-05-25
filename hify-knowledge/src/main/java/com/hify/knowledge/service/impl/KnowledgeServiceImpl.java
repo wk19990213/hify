@@ -6,6 +6,8 @@ import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
+import com.hify.common.util.LogSanitizer;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hify.knowledge.dto.*;
 import com.hify.knowledge.entity.*;
 import com.hify.knowledge.mapper.*;
@@ -35,6 +37,11 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class KnowledgeServiceImpl implements KnowledgeService {
+
+    // 允许的文件类型白名单
+    private static final Set<String> ALLOWED_FILE_TYPES = Set.of("pdf", "docx", "txt", "md");
+    // 最大文件大小：50MB
+    private static final long MAX_FILE_SIZE = 50 * 1024 * 1024;
 
     private final KnowledgeBaseMapper kbMapper;
     private final DocumentMapper docMapper;
@@ -88,6 +95,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Override
     @Transactional
     public DocumentResp uploadDocument(Long kbId, MultipartFile file) {
+        // 文件上传安全验证
+        validateUploadFile(file);
+
         KnowledgeBaseEntity kb = kbMapper.selectById(kbId);
         if (kb == null || kb.getDeleted() == 1)
             throw BizException.notFound("知识库不存在");
@@ -136,49 +146,25 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (qVec.length == 0)
             throw BizException.paramError("Embedding 失败，请检查 Ollama 是否运行");
 
-        List<Long> kbDocIds = docMapper.selectList(new LambdaQueryWrapper<DocumentEntity>()
-                        .eq(DocumentEntity::getKbId, kbId).eq(DocumentEntity::getDeleted, 0))
-                .stream().map(DocumentEntity::getId).toList();
-        if (kbDocIds.isEmpty())
-            throw BizException.paramError("知识库中没有文档");
-
-        List<DocumentChunkEntity> allChunks = chunkMapper.selectList(
-                new LambdaQueryWrapper<DocumentChunkEntity>()
-                        .in(DocumentChunkEntity::getDocId, kbDocIds)
-                        .eq(DocumentChunkEntity::getDeleted, 0));
-
-        record ScoredChunk(DocumentChunkEntity chunk, double score) {}
-        List<ScoredChunk> scored = new ArrayList<>();
-        for (var c : allChunks) {
-            float[] cVec = embeddingService.stringToVec(c.getEmbedding());
-            if (cVec.length == 0) continue;
-            double sim = EmbeddingService.cosineSimilarity(qVec, cVec);
-            scored.add(new ScoredChunk(c, sim));
-        }
-        scored.sort((a, b) -> Double.compare(b.score, a.score));
-        List<DocumentChunkEntity> topChunks = scored.stream()
-                .limit(5).map(ScoredChunk::chunk).toList();
-
         List<String> sources = new ArrayList<>();
         StringBuilder context = new StringBuilder();
-        for (var c : topChunks) {
-            context.append(c.getContent()).append("\n\n");
-            sources.add(c.getContent().substring(0, Math.min(100, c.getContent().length())) + "...");
-        }
+        searchAndBuildContext(kbId, qVec, sources, context);
+        if (sources.isEmpty())
+            throw BizException.paramError("知识库中没有找到相关文档");
 
         String prompt = String.format(
                 "你是一个知识库助手。请根据以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知。\n\n参考资料：\n%s\n\n用户问题：%s\n\n回答：",
                 context, question);
 
         // 查找有可用提供商的模型配置
-        List<ModelConfigEntity> models = modelConfigMapper.selectList(
+        Page<ModelConfigEntity> mcPage = modelConfigMapper.selectPage(
+                Page.of(1, 1),
                 new LambdaQueryWrapper<ModelConfigEntity>()
                         .eq(ModelConfigEntity::getStatus, 1)
                         .eq(ModelConfigEntity::getDeleted, 0)
-                        .gt(ModelConfigEntity::getProviderCount, 0)
-                        .last("LIMIT 1"));
+                        .gt(ModelConfigEntity::getProviderCount, 0));
         ProviderEntity provider = null;
-        ModelConfigEntity modelConfig = models.isEmpty() ? null : models.get(0);
+        ModelConfigEntity modelConfig = mcPage.getRecords().isEmpty() ? null : mcPage.getRecords().get(0);
         if (modelConfig != null) {
             // 通过 provider_model 查找可用 Provider
             List<ProviderModelEntity> pmList = providerModelMapper.selectList(
@@ -195,9 +181,11 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (provider == null) throw BizException.paramError("没有可用的 LLM Provider");
 
         ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
-        String authJson = AesEncryptor.decrypt(provider.getAuthConfig());
         Map<String, Object> authConfig = null;
-        try { authConfig = objectMapper.readValue(authJson, Map.class); } catch (Exception ignored) {}
+        try {
+            String authJson = AesEncryptor.decrypt(provider.getAuthConfig());
+            authConfig = objectMapper.readValue(authJson, Map.class);
+        } catch (Exception ignored) {}
 
         String llmResp = adapter.chat(provider.getBaseUrl(), authConfig,
                 new ChatRequest(modelConfig.getModelId(),
@@ -250,5 +238,94 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         DocumentResp r = new DocumentResp();
         BeanUtils.copyProperties(doc, r);
         return r;
+    }
+
+    /** 向量检索相似分块并构建上下文 */
+    private void searchAndBuildContext(Long kbId, float[] queryVec,
+                                        List<String> sources, StringBuilder context) {
+        List<Long> kbDocIds = docMapper.selectList(new LambdaQueryWrapper<DocumentEntity>()
+                        .eq(DocumentEntity::getKbId, kbId).eq(DocumentEntity::getDeleted, 0))
+                .stream().map(DocumentEntity::getId).toList();
+        if (kbDocIds.isEmpty()) return;
+
+        List<DocumentChunkEntity> allChunks = chunkMapper.selectList(
+                new LambdaQueryWrapper<DocumentChunkEntity>()
+                        .in(DocumentChunkEntity::getDocId, kbDocIds)
+                        .eq(DocumentChunkEntity::getDeleted, 0));
+
+        record ScoredChunk(DocumentChunkEntity chunk, double score) {}
+        List<ScoredChunk> scored = new ArrayList<>();
+        for (var c : allChunks) {
+            float[] cVec = embeddingService.stringToVec(c.getEmbedding());
+            if (cVec.length == 0) continue;
+            double sim = EmbeddingService.cosineSimilarity(queryVec, cVec);
+            scored.add(new ScoredChunk(c, sim));
+        }
+        scored.sort((a, b) -> Double.compare(b.score, a.score));
+        List<DocumentChunkEntity> topChunks = scored.stream()
+                .limit(5).map(ScoredChunk::chunk).toList();
+
+        for (var c : topChunks) {
+            context.append(c.getContent()).append("\n\n");
+            sources.add(c.getContent().substring(0, Math.min(100, c.getContent().length())) + "...");
+        }
+    }
+
+    /**
+     * 验证上传文件的安全性
+     */
+    private void validateUploadFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw BizException.paramError("文件不能为空");
+        }
+
+        // 1. 文件大小限制
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw BizException.paramError("文件大小超过限制（最大50MB）");
+        }
+
+        // 2. 文件类型白名单验证
+        String fileName = file.getOriginalFilename();
+        String fileType = fileName != null && fileName.contains(".")
+                ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase() : "";
+
+        if (!ALLOWED_FILE_TYPES.contains(fileType)) {
+            throw BizException.paramError("不支持的文件类型，仅支持：pdf, docx, txt, md");
+        }
+
+        // 3. 文件名安全检查：禁止路径遍历
+        if (fileName != null && (fileName.contains("..") || fileName.contains("/") || fileName.contains("\\"))) {
+            throw BizException.paramError("文件名包含非法字符");
+        }
+
+        // 4. 魔数检查（可选，针对PDF和DOCX）
+        validateFileMagicNumber(file, fileType);
+    }
+
+    /**
+     * 验证文件魔数，防止伪造扩展名
+     */
+    private void validateFileMagicNumber(MultipartFile file, String fileType) {
+        try (InputStream is = file.getInputStream()) {
+            byte[] magic = new byte[4];
+            int read = is.read(magic);
+            if (read < 4) return; // 文件太小，无法检查
+
+            // PDF: %PDF (0x25 0x50 0x44 0x46)
+            if ("pdf".equals(fileType)) {
+                if (magic[0] != 0x25 || magic[1] != 0x50 || magic[2] != 0x44 || magic[3] != 0x46) {
+                    throw BizException.paramError("文件内容不是有效的PDF格式");
+                }
+            }
+            // DOCX: PK (ZIP格式，0x50 0x4B)
+            else if ("docx".equals(fileType)) {
+                if (magic[0] != 0x50 || magic[1] != 0x4B) {
+                    throw BizException.paramError("文件内容不是有效的DOCX格式");
+                }
+            }
+        } catch (Exception e) {
+            log.error("文件魔数检查失败", e);
+            throw BizException.paramError("文件验证失败");
+        }
     }
 }

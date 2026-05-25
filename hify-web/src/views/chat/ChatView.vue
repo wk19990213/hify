@@ -40,8 +40,10 @@
         <div v-if="messages.length === 0 && !loading" class="empty-chat">
           <p>向 {{ agentName || 'Agent' }} 发送消息开始对话</p>
         </div>
-        <div v-for="(msg, index) in messages" :key="index"
-          :class="['message-row', msg.role === 'user' ? 'message-user' : 'message-assistant']">
+        <div
+          v-for="(msg, index) in messages" :key="index"
+          :class="['message-row', msg.role === 'user' ? 'message-user' : 'message-assistant']"
+        >
           <div class="message-avatar">{{ msg.role === 'user' ? 'U' : 'A' }}</div>
           <div :class="['message-bubble', msg.isError && 'message-error']">
             <div v-if="msg.content && msg.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(msg.content)" />
@@ -54,8 +56,10 @@
       <!-- 输入区域 -->
       <div class="chat-input-area">
         <div class="input-row">
-          <el-input v-model="inputText" :disabled="loading || !sessionId" placeholder="输入消息... Enter 发送"
-            type="textarea" :rows="2" @keydown.enter.exact.prevent="handleSend" resize="none" class="input-field" />
+          <el-input
+            v-model="inputText" :disabled="loading || !sessionId" placeholder="输入消息... Enter 发送"
+            type="textarea" :rows="2" @keydown.enter.exact.prevent="handleSend" resize="none" class="input-field"
+          />
           <div class="input-actions">
             <el-button v-if="loading" :icon="CloseBold" type="danger" @click="handleStop">终止</el-button>
             <el-button v-else :icon="Promotion" type="primary" @click="handleSend" :disabled="loading || !inputText.trim()">发送</el-button>
@@ -75,10 +79,15 @@ import { createChatSession, sendMessage, getChatHistory, listSessions, getSessio
 import type { ChatSession, ChatMessage } from '@/api/chat'
 import { notifySuccess, notifyError } from '@/utils/notify'
 import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 
 // ── 状态 ──
 const route = useRoute()
-const md = new MarkdownIt({ breaks: true, linkify: true })
+const md = new MarkdownIt({
+  breaks: true,
+  linkify: true,
+  html: false  // 禁用HTML标签，防止XSS
+})
 const agentName = ref('')
 const agentId = ref<number>(0)
 const sessions = ref<ChatSession[]>([])
@@ -140,7 +149,10 @@ const handleNewChat = () => {
   createNewSession()
 }
 
-const renderMarkdown = (text: string) => md.render(text)
+const renderMarkdown = (text: string) => {
+  const rawHtml = md.render(text)
+  return DOMPurify.sanitize(rawHtml)
+}
 
 const handleScroll = () => {
   if (!messagesContainer.value) return

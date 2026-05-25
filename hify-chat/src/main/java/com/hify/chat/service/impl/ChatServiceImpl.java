@@ -1,6 +1,7 @@
 package com.hify.chat.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.agent.dto.AgentResponse;
@@ -18,6 +19,7 @@ import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
 import com.hify.common.http.StreamCallback;
 import com.hify.common.resilience.CircuitBreakerService;
+import com.hify.common.util.LogSanitizer;
 import com.hify.knowledge.dto.RagResp;
 import com.hify.knowledge.service.KnowledgeService;
 import com.hify.mcp.mcp.McpClientManager;
@@ -44,11 +46,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import jakarta.annotation.PreDestroy;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -70,6 +78,25 @@ public class ChatServiceImpl implements ChatService {
     private final WorkflowService workflowService;
     private final McpClientManager mcpClientManager;
     private final ObjectMapper objectMapper;
+
+    private final ThreadPoolExecutor workflowExecutor = new ThreadPoolExecutor(
+            2, 4, 60, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(100),
+            new ThreadFactoryBuilder().setNameFormat("workflow-pool-%d").build(),
+            new ThreadPoolExecutor.CallerRunsPolicy());
+
+    @PreDestroy
+    void destroy() {
+        workflowExecutor.shutdown();
+        try {
+            if (!workflowExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                workflowExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            workflowExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
 
     // ==================== 会话管理 ====================
 
@@ -146,47 +173,14 @@ public class ChatServiceImpl implements ChatService {
         AgentContext ctx = resolveContext(session);
 
         // 检查 Agent 是否绑定了工作流
-        if (ctx.agent.getWorkflowId() != null) {
-            Map<String, Object> workflowInput = new java.util.HashMap<>();
-            workflowInput.put("user_message", req.getContent());
-            workflowInput.put("session_id", sessionId);
-            WorkflowRunReq runReq = new WorkflowRunReq();
-            runReq.setInput(workflowInput);
-            runReq.setSessionId(sessionId);
-            runReq.setModelConfigId(ctx.agent.getModelConfigId());
-            runReq.setTools(resolveAgentTools(ctx.agent.getId()));
-            WorkflowInstanceResp wfResp = workflowService.run(ctx.agent.getWorkflowId(), runReq);
-
-            // 保存用户消息
-            ChatMessageEntity userMsg = new ChatMessageEntity();
-            userMsg.setSessionId(sessionId);
-            userMsg.setRole("user");
-            userMsg.setContent(req.getContent());
-            userMsg.setTokenCount(0);
-            messageMapper.insert(userMsg);
-            autoTitle(session, req.getContent());
-
-            // 保存助手消息（工作流输出）
-            String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
-            ChatMessageEntity assistantMsg = new ChatMessageEntity();
-            assistantMsg.setSessionId(sessionId);
-            assistantMsg.setRole("assistant");
-            assistantMsg.setContent(wfOutput);
-            assistantMsg.setTokenCount(0);
-            messageMapper.insert(assistantMsg);
-            return toMessageResp(assistantMsg);
-        }
+        java.util.Optional<ChatMessageResp> wfResult = handleWorkflowExecution(
+                sessionId, session, ctx, req.getContent());
+        if (wfResult.isPresent()) return wfResult.get();
 
         List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息
-        ChatMessageEntity userMsg = new ChatMessageEntity();
-        userMsg.setSessionId(sessionId);
-        userMsg.setRole("user");
-        userMsg.setContent(req.getContent());
-        userMsg.setTokenCount(0);
-        messageMapper.insert(userMsg);
-        autoTitle(session, req.getContent());
+        ChatMessageEntity userMsg = saveUserMessage(sessionId, session, req.getContent());
 
         // 调用 LLM（支持 Function Calling）
         List<ToolDef> tools = resolveAgentTools(ctx.agent.getId());
@@ -277,14 +271,7 @@ public class ChatServiceImpl implements ChatService {
 
         // 检查 Agent 是否绑定了工作流
         if (ctx.agent.getWorkflowId() != null) {
-            // 保存用户消息
-            ChatMessageEntity userMsg = new ChatMessageEntity();
-            userMsg.setSessionId(sessionId);
-            userMsg.setRole("user");
-            userMsg.setContent(req.getContent());
-            userMsg.setTokenCount(0);
-            messageMapper.insert(userMsg);
-            autoTitle(session, req.getContent());
+            saveUserMessage(sessionId, session, req.getContent());
 
             SseEmitter wfEmitter = new SseEmitter(SSE_TIMEOUT_MS);
             Map<String, Object> workflowInput = new java.util.HashMap<>();
@@ -297,7 +284,7 @@ public class ChatServiceImpl implements ChatService {
             runReq.setTools(resolveAgentTools(ctx.agent.getId()));
             final Long workflowId = ctx.agent.getWorkflowId();
 
-            new Thread(() -> {
+            workflowExecutor.execute(() -> {
                 try {
                     WorkflowInstanceResp wfResp = workflowService.run(workflowId, runReq);
                     String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
@@ -316,7 +303,7 @@ public class ChatServiceImpl implements ChatService {
                 } catch (Exception e) {
                     wfEmitter.completeWithError(e);
                 }
-            }).start();
+            });
 
             return wfEmitter;
         }
@@ -324,13 +311,7 @@ public class ChatServiceImpl implements ChatService {
         List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
 
         // 保存用户消息（事务内，SseEmitter 之前）
-        ChatMessageEntity userMsg = new ChatMessageEntity();
-        userMsg.setSessionId(sessionId);
-        userMsg.setRole("user");
-        userMsg.setContent(req.getContent());
-        userMsg.setTokenCount(0);
-        messageMapper.insert(userMsg);
-        autoTitle(session, req.getContent());
+        saveUserMessage(sessionId, session, req.getContent());
 
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
 
@@ -349,12 +330,21 @@ public class ChatServiceImpl implements ChatService {
                 );
                 List<ToolCall> toolCalls = ctx.adapter.extractToolCalls(respBody);
                 if (toolCalls == null || toolCalls.isEmpty()) {
-                    // LLM 最终决定不调工具 → 直接返回文本片段即可
+                    // LLM 最终决定不调工具 → 直接推送文本并跳过 streamChat
                     String assistantContent = ctx.adapter.extractContent(respBody);
                     if (assistantContent != null && !assistantContent.isEmpty()) {
                         messages.add(Map.<String, Object>of("role", "assistant", "content", assistantContent));
                     }
-                    break;
+                    // 直接 SSE 推送结果（避免 streamChat 产生双重 assistant 消息）
+                    try {
+                        emitter.send(SseEmitter.event().data(
+                                assistantContent != null ? assistantContent : ""));
+                        emitter.send(SseEmitter.event().data("[DONE]"));
+                    } catch (IOException ioEx) {
+                        emitter.completeWithError(ioEx);
+                    }
+                    emitter.complete();
+                    return emitter;
                 }
                 String assistantContent = ctx.adapter.extractContent(respBody);
                 String reasoningContent = extractReasoning(respBody);
@@ -492,28 +482,7 @@ public class ChatServiceImpl implements ChatService {
             throw BizException.notFound("模型没有可用提供商");
         }
 
-        // 通过 provider_model 查找可用 Provider（优先使用 model_config 记录的 provider_id）
-        List<ProviderModelEntity> pmList = providerModelMapper.selectList(
-                new LambdaQueryWrapper<ProviderModelEntity>()
-                        .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
-
-        ProviderEntity provider = null;
-        for (ProviderModelEntity pm : pmList) {
-            ProviderEntity p = providerMapper.selectById(pm.getProviderId());
-            if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
-                if (p.getId().equals(modelConfig.getProviderId())) {
-                    provider = p; // 优先使用 model_config 记录的 provider
-                    break;
-                }
-                if (provider == null) {
-                    provider = p;
-                }
-            }
-        }
-
-        if (provider == null) {
-            throw BizException.notFound("模型的所有提供商均不可用");
-        }
+        ProviderEntity provider = findAvailableProvider(modelConfig);
 
         ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
 
@@ -521,11 +490,11 @@ public class ChatServiceImpl implements ChatService {
         Map<String, Object> authConfig = null;
         String encrypted = provider.getAuthConfig();
         if (encrypted != null && !encrypted.isEmpty()) {
-            String json = AesEncryptor.decrypt(encrypted);
             try {
+                String json = AesEncryptor.decrypt(encrypted);
                 authConfig = objectMapper.readValue(json, Map.class);
             } catch (Exception e) {
-                log.error("Failed to parse authConfig", e);
+                log.error("Failed to decrypt or parse authConfig", e);
             }
         }
 
@@ -542,31 +511,21 @@ public class ChatServiceImpl implements ChatService {
             systemPrompt = "你是一个有用的AI助手。";
         }
 
-        // RAG 检索：Agent 绑定了知识库时，检索相关上下文
-        if (agent.getKbId() != null) {
-            try {
-                RagResp rag = knowledgeService.query(agent.getKbId(), userContent);
-                if (rag.getSources() != null && !rag.getSources().isEmpty()) {
-                    String ctx = String.join("\n\n", rag.getSources());
-                    systemPrompt += "\n\n请根据以下参考资料回答用户问题：\n" + ctx;
-                }
-            } catch (Exception e) {
-                log.warn("RAG query failed for agent {} kb {}: {}", agent.getId(), agent.getKbId(), e.getMessage());
-            }
-        }
+        // RAG 检索增强
+        systemPrompt = enrichPromptWithRag(agent, userContent, systemPrompt);
 
         messages.add(Map.<String, Object>of("role", "system", "content", systemPrompt));
 
-        // 历史消息（受 maxRounds 限制）
+        // 历史消息（受 maxRounds 限制）- 使用分页查询避免 SQL 注入
         int maxRounds = agent.getConversationMaxRounds() != null ? agent.getConversationMaxRounds() : MAX_ROUNDS;
         int historyLimit = maxRounds * 2;
-        List<ChatMessageEntity> history = messageMapper.selectList(
-                new LambdaQueryWrapper<ChatMessageEntity>()
-                        .eq(ChatMessageEntity::getSessionId, sessionId)
-                        .eq(ChatMessageEntity::getDeleted, 0)
-                        .orderByDesc(ChatMessageEntity::getCreatedAt)
-                        .last("LIMIT " + historyLimit)
-        );
+        Page<ChatMessageEntity> page = Page.of(1, historyLimit);
+        LambdaQueryWrapper<ChatMessageEntity> wrapper = new LambdaQueryWrapper<ChatMessageEntity>()
+                .eq(ChatMessageEntity::getSessionId, sessionId)
+                .eq(ChatMessageEntity::getDeleted, 0)
+                .orderByDesc(ChatMessageEntity::getCreatedAt);
+        Page<ChatMessageEntity> resultPage = messageMapper.selectPage(page, wrapper);
+        List<ChatMessageEntity> history = resultPage.getRecords();
         for (int i = history.size() - 1; i >= 0; i--) {
             ChatMessageEntity msg = history.get(i);
             messages.add(Map.<String, Object>of("role", msg.getRole(), "content", msg.getContent() != null ? msg.getContent() : ""));
@@ -576,7 +535,96 @@ public class ChatServiceImpl implements ChatService {
         return messages;
     }
 
+    /**
+     * 查找可用的 Provider，优先使用 model_config 记录的 provider_id
+     */
+    private ProviderEntity findAvailableProvider(ModelConfigEntity modelConfig) {
+        List<ProviderModelEntity> pmList = providerModelMapper.selectList(
+                new LambdaQueryWrapper<ProviderModelEntity>()
+                        .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
+
+        ProviderEntity provider = null;
+        for (ProviderModelEntity pm : pmList) {
+            ProviderEntity p = providerMapper.selectById(pm.getProviderId());
+            if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
+                if (p.getId().equals(modelConfig.getProviderId())) {
+                    return p;
+                }
+                if (provider == null) {
+                    provider = p;
+                }
+            }
+        }
+        if (provider == null) {
+            throw BizException.notFound("模型的所有提供商均不可用");
+        }
+        return provider;
+    }
+
+    /**
+     * RAG 知识库检索增强系统提示词
+     */
+    private String enrichPromptWithRag(AgentResponse agent, String userContent, String systemPrompt) {
+        if (agent.getKbId() == null) {
+            return systemPrompt;
+        }
+        try {
+            RagResp rag = knowledgeService.query(agent.getKbId(), userContent);
+            if (rag.getSources() != null && !rag.getSources().isEmpty()) {
+                String ctx = String.join("\n\n", rag.getSources());
+                return systemPrompt + "\n\n请根据以下参考资料回答用户问题：\n" + ctx;
+            }
+        } catch (Exception e) {
+            log.warn("RAG query failed for agent {} kb {}: {}",
+                    agent.getId(), agent.getKbId(), LogSanitizer.sanitize(e.getMessage()));
+        }
+        return systemPrompt;
+    }
+
     // ==================== 内部：辅助方法 ====================
+
+    /**
+     * 处理工作流执行（当 Agent 绑定了工作流时）
+     * @return 如果执行了工作流则返回响应，否则返回 empty
+     */
+    private java.util.Optional<ChatMessageResp> handleWorkflowExecution(
+            Long sessionId, ChatSessionEntity session, AgentContext ctx, String userContent) {
+        if (ctx.agent.getWorkflowId() == null) {
+            return java.util.Optional.empty();
+        }
+        Map<String, Object> workflowInput = new java.util.HashMap<>();
+        workflowInput.put("user_message", userContent);
+        workflowInput.put("session_id", sessionId);
+        WorkflowRunReq runReq = new WorkflowRunReq();
+        runReq.setInput(workflowInput);
+        runReq.setSessionId(sessionId);
+        runReq.setModelConfigId(ctx.agent.getModelConfigId());
+        runReq.setTools(resolveAgentTools(ctx.agent.getId()));
+        WorkflowInstanceResp wfResp = workflowService.run(ctx.agent.getWorkflowId(), runReq);
+
+        saveUserMessage(sessionId, session, userContent);
+
+        String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
+        ChatMessageEntity assistantMsg = new ChatMessageEntity();
+        assistantMsg.setSessionId(sessionId);
+        assistantMsg.setRole("assistant");
+        assistantMsg.setContent(wfOutput);
+        assistantMsg.setTokenCount(0);
+        messageMapper.insert(assistantMsg);
+        return java.util.Optional.of(toMessageResp(assistantMsg));
+    }
+
+    /** 保存用户消息并自动生成会话标题 */
+    private ChatMessageEntity saveUserMessage(Long sessionId, ChatSessionEntity session, String content) {
+        ChatMessageEntity userMsg = new ChatMessageEntity();
+        userMsg.setSessionId(sessionId);
+        userMsg.setRole("user");
+        userMsg.setContent(content);
+        userMsg.setTokenCount(0);
+        messageMapper.insert(userMsg);
+        autoTitle(session, content);
+        return userMsg;
+    }
 
     private ChatSessionEntity getSession(Long sessionId) {
         ChatSessionEntity session = sessionMapper.selectById(sessionId);

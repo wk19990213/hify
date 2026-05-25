@@ -1,4 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
+import type { PageResult } from '@/types/common'
 
 // ── 类型定义 ───────────────────────────────────────────
 
@@ -21,12 +22,6 @@ export interface McpServerRequest {
   status?: number
 }
 
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
-}
 
 export interface McpServerListParams {
   page?: number

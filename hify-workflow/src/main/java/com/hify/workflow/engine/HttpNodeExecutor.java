@@ -2,6 +2,7 @@ package com.hify.workflow.engine;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.util.UrlSecurityValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
@@ -18,6 +19,8 @@ public class HttpNodeExecutor implements NodeExecutor {
 
     private final ObjectMapper objectMapper;
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .followRedirects(false)
+            .followSslRedirects(false)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build();
@@ -50,6 +53,13 @@ public class HttpNodeExecutor implements NodeExecutor {
         url = resolveVariables(url, ctx.getVariables());
         if (body != null) {
             body = resolveVariables(body, ctx.getVariables());
+        }
+
+        // SSRF 防护
+        if (!UrlSecurityValidator.isValidUrl(url)) {
+            return NodeExecResult.builder().success(false)
+                    .errorMsg("HTTP 节点 URL 不安全，仅允许 HTTPS 公网地址或本地 HTTP")
+                    .build();
         }
 
         try {

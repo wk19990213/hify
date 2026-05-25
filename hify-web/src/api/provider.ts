@@ -1,4 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
+import type { PageResult } from '@/types/common'
 
 // ── 类型定义 ───────────────────────────────────────────
 
@@ -78,12 +79,6 @@ export interface ConnectionTestResult {
 }
 
 /** 分页结果（request.ts 拦截器已解包 Result.data，字段对齐 CLAUDE.md） */
-export interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  pageSize: number
-}
 
 /** 列表查询参数 */
 export interface ProviderListParams {

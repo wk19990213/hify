@@ -54,20 +54,22 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理非法参数异常
+     * 只返回通用错误消息，防止敏感信息泄露，详情仅记录日志
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public Result<Void> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("非法参数: {}", e.getMessage());
-        return Result.fail(ErrorCode.PARAM_ERROR.getCode(), e.getMessage());
+        log.warn("非法参数", e);
+        return Result.fail(ErrorCode.PARAM_ERROR.getCode(), ErrorCode.PARAM_ERROR.getMessage());
     }
 
     /**
      * 处理非法状态异常
+     * 只返回通用错误消息，防止敏感信息泄露，详情仅记录日志
      */
     @ExceptionHandler(IllegalStateException.class)
     public Result<Void> handleIllegalStateException(IllegalStateException e) {
-        log.warn("非法状态: {}", e.getMessage());
-        return Result.fail(ErrorCode.BIZ_RULE_VIOLATION.getCode(), e.getMessage());
+        log.warn("非法状态", e);
+        return Result.fail(ErrorCode.BIZ_RULE_VIOLATION.getCode(), ErrorCode.BIZ_RULE_VIOLATION.getMessage());
     }
 
     /**

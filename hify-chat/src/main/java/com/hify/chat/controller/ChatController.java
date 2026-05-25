@@ -5,6 +5,7 @@ import com.hify.chat.dto.ChatSessionResp;
 import com.hify.chat.dto.SendMessageReq;
 import com.hify.chat.service.ChatService;
 import com.hify.common.result.Result;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,12 +43,14 @@ public class ChatController {
         return Result.ok(chatService.getSessionDetail(sessionId));
     }
 
+    @RateLimiter(name = "chat-rate-limiter")
     @PostMapping("/sessions/{sessionId}/messages")
     public Result<ChatMessageResp> sendMessage(@PathVariable("sessionId") Long sessionId,
                                                 @RequestBody SendMessageReq req) {
         return Result.ok(chatService.sendMessage(sessionId, req));
     }
 
+    @RateLimiter(name = "chat-rate-limiter")
     @PostMapping("/sessions/{sessionId}/stream")
     public SseEmitter sendMessageStream(@PathVariable("sessionId") Long sessionId,
                                          @RequestBody SendMessageReq req) {

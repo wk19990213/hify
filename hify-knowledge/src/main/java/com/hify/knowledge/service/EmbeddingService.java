@@ -6,6 +6,7 @@ import com.hify.provider.entity.ProviderEntity;
 import com.hify.provider.mapper.ProviderMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -31,14 +32,19 @@ public class EmbeddingService {
     private final ProviderMapper providerMapper;
 
     /** 硅基流动直达（避免遍历死 Provider 超时） */
-    private static final String EMBEDDING_URL = "https://api.siliconflow.cn/v1/embeddings";
-    private static final String EMBEDDING_KEY = "sk-mvngqzxgeclehvlbzcqnnnvjwtwbquurcuralnkiyunxkmzt";
+    @Value("${embedding.url:https://api.siliconflow.cn/v1/embeddings}")
+    private String embeddingUrl;
+
+    @Value("${embedding.key:}")
+    private String embeddingKey;
 
     /** 将文本转为向量 */
     public float[] embed(String text, String model) {
-        // 直接调硅基流动
-        float[] vec = callApi(EMBEDDING_URL, EMBEDDING_KEY, model != null ? model : "BAAI/bge-m3", text);
-        if (vec.length > 0) return vec;
+        // 直接调硅基流动（如果配置了密钥）
+        if (embeddingKey != null && !embeddingKey.isEmpty()) {
+            float[] vec = callApi(embeddingUrl, embeddingKey, model != null ? model : "BAAI/bge-m3", text);
+            if (vec.length > 0) return vec;
+        }
         // 回退 Ollama
         return embedViaOllama(text, model);
     }
@@ -54,6 +60,12 @@ public class EmbeddingService {
                     .POST(HttpRequest.BodyPublishers.ofString(body));
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
             HttpResponse<String> resp = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
+            int statusCode = resp.statusCode();
+            if (statusCode != 200) {
+                log.warn("Embedding API returned HTTP {}: {}", statusCode,
+                        resp.body().substring(0, Math.min(100, resp.body().length())));
+                return new float[0];
+            }
             JsonNode root = objectMapper.readTree(resp.body());
             JsonNode data = root.get("data");
             if (data != null && data.size() > 0) {

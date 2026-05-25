@@ -48,6 +48,7 @@ import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import { getWorkflowList, deleteWorkflow, type Workflow, type WorkflowListParams } from '@/api/workflow'
+import { formatDateTime } from '@/utils/date'
 
 const columns: TableColumn<Workflow>[] = [
   { prop: 'name', label: '名称', minWidth: 180 },
@@ -73,11 +74,7 @@ async function handleDelete(row: Workflow) {
   }
 }
 
-function formatDateTime(datetime: string) {
-  if (!datetime) return '-'
-  const d = new Date(datetime)
-  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
+
 </script>
 
 <style scoped>

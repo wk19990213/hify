@@ -107,7 +107,7 @@ export function useRequest<T, P extends any[] = any[]>(
 
   // 立即执行
   if (immediate) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     execute(...([] as any))
   }
 
