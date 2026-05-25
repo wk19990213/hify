@@ -26,12 +26,14 @@ docs/
 
 # Environment
 .env
+.env.example
 
 # Project artifacts
 .agents/
 prd.json
 skills-lock.json
 tech-debt-todo.md
+eslint.config.js
 
 # OS
 .DS_Store
