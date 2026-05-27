@@ -31,10 +31,14 @@ class UrlSecurityValidatorTest {
 
     @Test
     void testLocalhostHttp_Allowed() {
-        // 本地 HTTP 允许（Ollama 开发场景）
-        assertTrue(UrlSecurityValidator.isValidUrl("http://localhost:11434"));
-        assertTrue(UrlSecurityValidator.isValidUrl("http://127.0.0.1:8080"));
-        assertTrue(UrlSecurityValidator.isValidUrl("http://localhost"));
+        UrlSecurityValidator.setAllowLocalhostHttp(true);
+        try {
+            assertTrue(UrlSecurityValidator.isValidUrl("http://localhost:11434"));
+            assertTrue(UrlSecurityValidator.isValidUrl("http://127.0.0.1:8080"));
+            assertTrue(UrlSecurityValidator.isValidUrl("http://localhost"));
+        } finally {
+            UrlSecurityValidator.setAllowLocalhostHttp(false);
+        }
     }
 
     @Test
@@ -88,9 +92,14 @@ class UrlSecurityValidatorTest {
 
     @Test
     void testValidateUrl_PassesForLocalhostHttp() {
-        assertDoesNotThrow(() -> {
-            UrlSecurityValidator.validateUrl("http://localhost:11434", "baseUrl");
-        });
+        UrlSecurityValidator.setAllowLocalhostHttp(true);
+        try {
+            assertDoesNotThrow(() -> {
+                UrlSecurityValidator.validateUrl("http://localhost:11434", "baseUrl");
+            });
+        } finally {
+            UrlSecurityValidator.setAllowLocalhostHttp(false);
+        }
     }
 
     @Test
@@ -120,8 +129,40 @@ class UrlSecurityValidatorTest {
 
     @Test
     void testIpv6LocalhostHttp_Allowed() {
-        // HTTP + IPv6 loopback 允许（本地开发）
-        assertTrue(UrlSecurityValidator.isValidUrl("http://[::1]:11434"));
+        UrlSecurityValidator.setAllowLocalhostHttp(true);
+        try {
+            assertTrue(UrlSecurityValidator.isValidUrl("http://[::1]:11434"));
+        } finally {
+            UrlSecurityValidator.setAllowLocalhostHttp(false);
+        }
+    }
+
+    @Test
+    void testLocalhostHttpBlockedByDefault() {
+        // 默认配置下 localhost HTTP 应被拒绝
+        assertFalse(UrlSecurityValidator.isValidUrl("http://localhost:11434"),
+                "localhost HTTP should be blocked by default (allow-localhost-http=false)");
+        assertFalse(UrlSecurityValidator.isValidUrl("http://127.0.0.1:8080"),
+                "127.0.0.1 HTTP should be blocked by default");
+    }
+
+    @Test
+    void testValidateUrlThrowsForLocalhostHttpByDefault() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            UrlSecurityValidator.validateUrl("http://localhost:11434", "baseUrl");
+        });
+    }
+
+    @Test
+    void testLocalhostHttpAllowedWhenEnabled() {
+        UrlSecurityValidator.setAllowLocalhostHttp(true);
+        try {
+            assertTrue(UrlSecurityValidator.isValidUrl("http://localhost:11434"),
+                    "localhost HTTP should be allowed when allow-localhost-http=true");
+            assertTrue(UrlSecurityValidator.isValidUrl("http://127.0.0.1:8080"));
+        } finally {
+            UrlSecurityValidator.setAllowLocalhostHttp(false);
+        }
     }
 
     @Test

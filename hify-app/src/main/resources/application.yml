@@ -105,6 +105,13 @@ resilience4j:
         limit-refresh-period: 1s
         timeout-duration: 10s
 
+# URL 安全校验配置
+security:
+  url-validator:
+    # 是否允许 localhost HTTP 连接（开发场景：Ollama 等本地服务）
+    # 生产环境应设为 false
+    allow-localhost-http: ${SECURITY_URL_ALLOW_LOCALHOST_HTTP:false}
+
 # Embedding 服务配置
 embedding:
   url: ${EMBEDDING_URL:https://api.siliconflow.cn/v1/embeddings}

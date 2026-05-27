@@ -22,6 +22,13 @@ public class UrlSecurityValidator {
     // 允许 HTTP 连接的本地地址（开发/Ollama 场景）
     private static final Set<String> LOCAL_HTTP_ALLOWED = Set.of("localhost", "127.0.0.1", "[::1]", "::1");
 
+    /** 是否允许 localhost HTTP 连接。默认 false，可通过 security.url-validator.allow-localhost-http 配置。 */
+    private static volatile boolean allowLocalhostHttp = false;
+
+    public static void setAllowLocalhostHttp(boolean allow) {
+        allowLocalhostHttp = allow;
+    }
+
     /**
      * 验证 URL 是否安全（防止 SSRF）
      * @param url 待验证的 URL
@@ -51,8 +58,8 @@ public class UrlSecurityValidator {
         boolean isHttps = url.startsWith("https://");
         boolean isLocalhost = LOCAL_HTTP_ALLOWED.contains(host);
 
-        // 4. HTTP 仅允许本地回环地址（Ollama 等本地服务）
-        if (!isHttps && !isLocalhost) {
+        // 4. HTTP 仅允许本地回环地址（Ollama 等本地服务），且需 allow-localhost-http=true
+        if (!isHttps && (!isLocalhost || !allowLocalhostHttp)) {
             return false;
         }
 
