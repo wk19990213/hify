@@ -18,6 +18,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(new RequestLogInterceptor())
                 .addPathPatterns("/**")
                 .excludePathPatterns("/actuator/**", "/health", "/error");
+        // 限流拦截器 — POST/PUT/DELETE 按 IP 分片，/api/v1/auth/** 不限流
+        registry.addInterceptor(new RateLimitInterceptor())
+                .addPathPatterns("/api/v1/**")
+                .excludePathPatterns("/api/v1/auth/**");
     }
 
     @Override
