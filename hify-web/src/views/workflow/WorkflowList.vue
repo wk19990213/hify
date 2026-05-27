@@ -28,10 +28,6 @@
         </el-tag>
       </template>
 
-      <template #createdAt="{ row }">
-        {{ formatDateTime(row.createdAt) }}
-      </template>
-
       <template #action="{ row }">
         <div class="action-btns">
           <el-button type="primary" link :icon="Edit" @click="$router.push(`/workflows/${row.id}/edit`)">编辑</el-button>
@@ -45,17 +41,19 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import { getWorkflowList, deleteWorkflow, type Workflow, type WorkflowListParams } from '@/api/workflow'
-import { formatDateTime } from '@/utils/date'
+
+import { useConfirm } from '@/composables/useConfirm'
+
+const { confirmDelete } = useConfirm()
 
 const columns: TableColumn<Workflow>[] = [
   { prop: 'name', label: '名称', minWidth: 180 },
   { prop: 'description', label: '描述', minWidth: 200 },
   { prop: 'nodeCount', label: '节点数', width: 100, slot: 'nodeCount', align: 'center' },
   { prop: 'status', label: '状态', width: 80, slot: 'status', align: 'center' },
-  { prop: 'createdAt', label: '创建时间', width: 180, slot: 'createdAt' },
+  { prop: 'createdAt', label: '创建时间', width: 180, type: 'datetime' },
   { prop: 'action', label: '操作', width: 160, slot: 'action', fixed: 'right', align: 'center' },
 ]
 
@@ -65,9 +63,7 @@ const tableRef = ref<any>(null)
 
 async function handleDelete(row: Workflow) {
   try {
-    await ElMessageBox.confirm(`确定要删除工作流「${row.name}」吗？`, '删除工作流', { type: 'warning' })
-    await deleteWorkflow(row.id)
-    ElMessage.success('删除成功')
+    await confirmDelete(`确定要删除工作流「${row.name}」吗？`, () => deleteWorkflow(row.id))
     tableRef.value?.refresh(true)
   } catch {
     // 取消或失败

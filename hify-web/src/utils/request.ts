@@ -6,6 +6,15 @@ const service = axios.create({
   timeout: 30000
 })
 
+// 请求拦截器：自动附加 JWT token
+service.interceptors.request.use((config) => {
+  const token = localStorage.getItem('hify_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 service.interceptors.response.use(
   (response) => {
     const { code, message, data } = response.data
@@ -16,6 +25,12 @@ service.interceptors.response.use(
     return Promise.reject(new Error(message || '请求失败'))
   },
   (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('hify_token')
+      localStorage.removeItem('hify_user')
+      window.dispatchEvent(new CustomEvent('auth:required'))
+      return Promise.reject(new Error('未登录或登录已过期'))
+    }
     ElMessage.error(error.message || '网络错误')
     return Promise.reject(error)
   }

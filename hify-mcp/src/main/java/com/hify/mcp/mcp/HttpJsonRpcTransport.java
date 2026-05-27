@@ -61,7 +61,7 @@ public class HttpJsonRpcTransport implements McpTransport {
         if (params != null) request.set("params", params);
 
         String reqJson = mapper.writeValueAsString(request);
-        log.debug("MCP >> {}", reqJson);
+        log.debug("MCP >> method={}, id={}", method, request.get("id").asInt());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -73,8 +73,9 @@ public class HttpJsonRpcTransport implements McpTransport {
         String respBody = response.getBody();
         if (respBody == null) throw new IOException("MCP empty response");
 
-        log.debug("MCP << {}", respBody);
         JsonNode resp = mapper.readTree(respBody);
+        log.trace("MCP << {}", respBody);
+        log.debug("MCP << method={}, hasError={}", method, resp.has("error"));
         if (resp.has("error")) {
             throw new IOException("MCP error: " + resp.get("error"));
         }

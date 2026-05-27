@@ -46,7 +46,7 @@ public class ProviderController {
                                 .orderByAsc(ModelConfigEntity::getSortOrder))
                 .stream()
                 .map(m -> {
-                    Map<String, Object> item = new java.util.HashMap<>();
+                    Map<String, Object> item = new HashMap<>();
                     item.put("id", m.getId());
                     item.put("name", m.getName());
                     item.put("providerId", m.getProviderId());

@@ -75,3 +75,44 @@ static {
     ENABLED = enabled;
 }
 ```
+
+## 前端 fetch() 不经过 axios 拦截器
+
+`ChatView.vue` 的 SSE 流式请求使用原生 `fetch()`，不会触发 axios 请求拦截器自动附加 JWT token。需手动从 `localStorage` 取 `hify_token`：
+```typescript
+const token = localStorage.getItem('hify_token')
+await fetch(url, {
+  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+})
+```
+同时检查 `response.ok`，否则 401 响应不会抛异常，导致静默空消息。
+
+## axios 响应拦截器已解包 data
+
+`request.ts` 拦截器 `code=200` 时返回 `data`（即 `response.data.data`），调用方直接访问业务字段：
+```typescript
+// 错误：res.data.token（二次解包，data 为 undefined）
+// 正确：res.token
+const res = await post('/v1/auth/login', { username, password })
+saveAuth(res.token, { userId: res.userId, username: res.username })
+```
+
+## 注册/登录报"系统内部错误"排查顺序
+
+1. 检查 `.env` 是否存在且密码正确（`application.yml` 通过环境变量读取 DB 配置）
+2. 检查 MySQL 连接 `mysql -h <host> -u appuser -p<PASS> -e "SELECT 1"`
+3. 检查数据库表是否已初始化 `SHOW TABLES LIKE 'hify_user'`
+4. 检查 JAR 是否过期需 `mvn clean package -DskipTests` 重新编译
+
+## MySQL 8.0 不支持 ALTER TABLE ADD COLUMN IF NOT EXISTS
+
+`schema.sql` 中 `ALTER TABLE agent ADD COLUMN IF NOT EXISTS ...` 在 MySQL 8.0 会报语法错误。用动态 SQL：
+```sql
+SET @sql = IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+   WHERE TABLE_SCHEMA='hify' AND TABLE_NAME='agent' AND COLUMN_NAME='workflow_id') = 0,
+  'ALTER TABLE agent ADD COLUMN workflow_id BIGINT',
+  'SELECT ''exists'''
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+```

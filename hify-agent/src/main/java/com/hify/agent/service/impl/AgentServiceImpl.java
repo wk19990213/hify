@@ -1,7 +1,6 @@
 package com.hify.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.hify.agent.dto.AgentListParams;
 import com.hify.agent.dto.AgentRequest;
 import com.hify.agent.dto.AgentResponse;
@@ -10,6 +9,7 @@ import com.hify.agent.dto.AgentToolResponse;
 import com.hify.agent.entity.AgentEntity;
 import com.hify.agent.entity.AgentMcpServerEntity;
 import com.hify.agent.entity.AgentToolEntity;
+import com.hify.agent.mapper.AgentConvertMapper;
 import com.hify.agent.mapper.AgentMapper;
 import com.hify.agent.mapper.AgentMcpServerMapper;
 import com.hify.agent.mapper.AgentToolMapper;
@@ -205,52 +205,55 @@ public class AgentServiceImpl implements AgentService {
 
     /** 批量填充关联字段：modelConfigName + toolCount + mcpServerIds */
     private void enrichAgentResponses(List<AgentResponse> responses) {
-        List<Long> agentIds = responses.stream()
-                .map(AgentResponse::getId)
-                .toList();
+        List<Long> agentIds = responses.stream().map(AgentResponse::getId).toList();
         if (agentIds.isEmpty()) return;
+        enrichModelNames(responses, agentIds);
+        enrichToolCounts(responses, agentIds);
+        enrichMcpBindings(responses, agentIds);
+    }
 
-        // 填充 modelConfigName
+    private void enrichModelNames(List<AgentResponse> responses, List<Long> agentIds) {
         List<Long> modelConfigIds = responses.stream()
                 .map(AgentResponse::getModelConfigId)
                 .filter(id -> id != null)
-                .distinct()
-                .toList();
-        if (!modelConfigIds.isEmpty()) {
-            var modelNameMap = modelConfigMapper.selectList(
-                            new LambdaQueryWrapper<ModelConfigEntity>()
-                                    .in(ModelConfigEntity::getId, modelConfigIds)
-                                    .select(ModelConfigEntity::getId, ModelConfigEntity::getName))
-                    .stream()
-                    .collect(Collectors.toMap(ModelConfigEntity::getId, ModelConfigEntity::getName, (a, b) -> a));
-            for (AgentResponse resp : responses) {
-                if (resp.getModelConfigId() != null) {
-                    resp.setModelConfigName(modelNameMap.get(resp.getModelConfigId()));
-                }
+                .distinct().toList();
+        if (modelConfigIds.isEmpty()) return;
+        var modelNameMap = modelConfigMapper.selectList(
+                        new LambdaQueryWrapper<ModelConfigEntity>()
+                                .in(ModelConfigEntity::getId, modelConfigIds)
+                                .select(ModelConfigEntity::getId, ModelConfigEntity::getName))
+                .stream()
+                .collect(Collectors.toMap(ModelConfigEntity::getId, ModelConfigEntity::getName, (a, b) -> a));
+        for (AgentResponse resp : responses) {
+            if (resp.getModelConfigId() != null) {
+                resp.setModelConfigName(modelNameMap.get(resp.getModelConfigId()));
             }
         }
+    }
 
-        // 统计工具数量（agent_tool + agent_mcp_server）
+    private void enrichToolCounts(List<AgentResponse> responses, List<Long> agentIds) {
         var toolCountMap = agentToolMapper.selectList(
                         new LambdaQueryWrapper<AgentToolEntity>()
                                 .in(AgentToolEntity::getAgentId, agentIds))
                 .stream()
                 .collect(Collectors.groupingBy(AgentToolEntity::getAgentId, Collectors.counting()));
+        for (AgentResponse resp : responses) {
+            resp.setToolCount(toolCountMap.getOrDefault(resp.getId(), 0L).intValue());
+        }
+    }
 
+    private void enrichMcpBindings(List<AgentResponse> responses, List<Long> agentIds) {
         var mcpServerRecords = agentMcpServerMapper.selectList(
                 new LambdaQueryWrapper<AgentMcpServerEntity>()
                         .in(AgentMcpServerEntity::getAgentId, agentIds));
-
         var mcpServerCountMap = mcpServerRecords.stream()
                 .collect(Collectors.groupingBy(AgentMcpServerEntity::getAgentId, Collectors.counting()));
-
         var mcpServerIdsMap = mcpServerRecords.stream()
                 .collect(Collectors.groupingBy(
                         AgentMcpServerEntity::getAgentId,
                         Collectors.mapping(AgentMcpServerEntity::getMcpServerId, Collectors.toList())));
-
         for (AgentResponse resp : responses) {
-            long oldCount = toolCountMap.getOrDefault(resp.getId(), 0L);
+            long oldCount = resp.getToolCount();
             long newCount = mcpServerCountMap.getOrDefault(resp.getId(), 0L);
             resp.setToolCount((int) (oldCount + newCount));
             resp.setMcpServerIds(mcpServerIdsMap.getOrDefault(resp.getId(), List.of()));
@@ -367,9 +370,12 @@ public class AgentServiceImpl implements AgentService {
             wrapper.eq(AgentEntity::getModelConfigId, params.getModelConfigId());
         }
 
-        // 排序
-        String sortField = params.getSortField();
-        String sortOrder = params.getSortOrder();
+        applySorting(wrapper, params.getSortField(), params.getSortOrder());
+
+        return wrapper;
+    }
+
+    private void applySorting(LambdaQueryWrapper<AgentEntity> wrapper, String sortField, String sortOrder) {
         if ("sortOrder".equals(sortField)) {
             if ("desc".equalsIgnoreCase(sortOrder)) {
                 wrapper.orderByDesc(AgentEntity::getSortOrder);
@@ -383,12 +389,9 @@ public class AgentServiceImpl implements AgentService {
                 wrapper.orderByDesc(AgentEntity::getCreatedAt);
             }
         } else {
-            // 默认排序
             wrapper.orderByAsc(AgentEntity::getSortOrder)
                     .orderByDesc(AgentEntity::getCreatedAt);
         }
-
-        return wrapper;
     }
 
     private void saveAgentMcpServers(Long agentId, List<Long> mcpServerIds) {
@@ -423,9 +426,7 @@ public class AgentServiceImpl implements AgentService {
     }
 
     private AgentResponse convertToResponse(AgentEntity entity) {
-        AgentResponse resp = new AgentResponse();
-        BeanUtils.copyProperties(entity, resp);
-        return resp;
+        return AgentConvertMapper.INSTANCE.toResponse(entity);
     }
 
     private AgentToolResponse convertToolToResponse(AgentToolEntity entity) {

@@ -72,35 +72,35 @@
             <template v-if="currentNode.type === 'llm'">
               <el-form-item label="做什么">
                 <el-input
-                  v-model="llmPrompt" type="textarea" :rows="5"
+                  v-model="nodeConfig.prompt" type="textarea" :rows="5"
                   :placeholder="llmPlaceholder"
                 />
                 <div class="type-hint">告诉 AI 要做什么。可以用 <code v-pre>{{节点名.字段}}</code> 引用前面步骤的结果</div>
               </el-form-item>
               <el-form-item label="最多重试">
-                <el-input-number v-model="llmMaxRetries" :min="0" :max="5" />
+                <el-input-number v-model="nodeConfig.maxRetries" :min="0" :max="5" />
               </el-form-item>
               <el-form-item label="工具调用">
-                <el-switch v-model="llmToolsEnabled" size="small" />
+                <el-switch v-model="nodeConfig.toolsEnabled" size="small" />
                 <span class="type-hint">开启后 LLM 可自主判断是否调用 Agent 绑定的全部 MCP 工具</span>
               </el-form-item>
             </template>
 
             <template v-if="currentNode.type === 'rag'">
               <el-form-item label="知识库">
-                <el-input v-model="ragKbId" placeholder="选择要检索的知识库" />
+                <el-input v-model="nodeConfig.kbId" placeholder="选择要检索的知识库" />
               </el-form-item>
               <el-form-item label="搜什么">
-                <el-input v-model="ragQuery" placeholder="比如：{{input.user_message}}" />
+                <el-input v-model="nodeConfig.query" placeholder="比如：{{input.user_message}}" />
               </el-form-item>
             </template>
 
             <template v-if="currentNode.type === 'http'">
               <el-form-item label="接口地址">
-                <el-input v-model="httpUrl" placeholder="https://api.example.com/orders" />
+                <el-input v-model="nodeConfig.url" placeholder="https://api.example.com/orders" />
               </el-form-item>
               <el-form-item label="请求方式">
-                <el-select v-model="httpMethod">
+                <el-select v-model="nodeConfig.method">
                   <el-option label="GET" value="GET" />
                   <el-option label="POST" value="POST" />
                   <el-option label="PUT" value="PUT" />
@@ -108,13 +108,13 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="请求体">
-                <el-input v-model="httpBody" type="textarea" :rows="3" placeholder="POST/PUT 时的 JSON 数据" />
+                <el-input v-model="nodeConfig.body" type="textarea" :rows="3" placeholder="POST/PUT 时的 JSON 数据" />
               </el-form-item>
             </template>
 
             <template v-if="currentNode.type === 'condition'">
               <el-form-item label="条件">
-                <el-input v-model="conditionExpression" placeholder="比如：{{查订单.hasOrderId}} == true" />
+                <el-input v-model="nodeConfig.expression" placeholder="比如：{{查订单.hasOrderId}} == true" />
                 <div class="type-hint">
                   支持 <code>==</code>（等于）和 <code>!=</code>（不等于）。结果决定走「条件成立」还是「条件不成立」分支
                 </div>
@@ -189,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -259,32 +259,24 @@ function updateConfig(val: any) {
   }
 }
 
-/** 为 configJson 中的单个字段创建双向绑定 computed */
-function configField<T>(key: string, defaultValue: T) {
-  return computed<T>({
-    get: () => {
-      const cfg = parseConfig()
-      return (cfg[key] !== undefined ? cfg[key] : defaultValue) as T
-    },
-    set: (val: T) => {
-      const cfg = parseConfig()
-      cfg[key] = val
-      updateConfig(cfg)
-    }
-  })
-}
+/** 统一配置对象 — 替代 9 个独立 configField computed */
+const nodeConfig = reactive<Record<string, any>>({
+  prompt: '', maxRetries: 0, kbId: '', query: '',
+  url: '', method: 'GET', body: '', expression: '', toolsEnabled: false,
+})
 
-const llmPrompt = configField<string>('prompt', '')
-const llmMaxRetries = configField<number>('maxRetries', 0)
-const ragKbId = configField<string>('kbId', '')
-const ragQuery = configField<string>('query', '')
-const httpUrl = configField<string>('url', '')
-const httpMethod = configField<string>('method', 'GET')
-const httpBody = configField<string>('body', '')
-const conditionExpression = configField<string>('expression', '')
+// 当选中的节点变化时，从 configJson 同步到 reactive 对象
+watch(currentNode, () => {
+  const cfg = parseConfig()
+  for (const key of Object.keys(nodeConfig)) {
+    nodeConfig[key] = cfg[key] !== undefined ? cfg[key] : nodeConfig[key]
+  }
+}, { immediate: true })
 
-// 工具调用开关
-const llmToolsEnabled = configField<boolean>('toolsEnabled', false)
+// 当 reactive 对象变化时，回写到 configJson
+watch(nodeConfig, (val) => {
+  updateConfig({ ...val })
+}, { deep: true })
 
 const outEdges = computed(() => {
   if (selectedNodeIndex.value === null) return []

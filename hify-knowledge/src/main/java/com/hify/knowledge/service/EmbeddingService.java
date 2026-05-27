@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.provider.entity.ProviderEntity;
 import com.hify.provider.mapper.ProviderMapper;
+import com.hify.common.util.UrlSecurityValidator;
+import com.hify.provider.util.AuthConfigHelper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,8 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.Comparator;
-import java.util.List;
+
 import java.util.Map;
 
 /**
@@ -38,6 +40,14 @@ public class EmbeddingService {
     @Value("${embedding.key:}")
     private String embeddingKey;
 
+    @PostConstruct
+    void checkConfig() {
+        if ((embeddingKey == null || embeddingKey.isEmpty()) && embeddingUrl != null
+                && !embeddingUrl.contains("localhost") && !embeddingUrl.contains("127.0.0.1")) {
+            log.warn("EMBEDDING_KEY 未配置但 embedding.url 指向远程地址({})，将回退到 Ollama 本地服务", embeddingUrl);
+        }
+    }
+
     /** 将文本转为向量 */
     public float[] embed(String text, String model) {
         // 直接调硅基流动（如果配置了密钥）
@@ -51,6 +61,7 @@ public class EmbeddingService {
 
     private float[] callApi(String url, String apiKey, String model, String text) {
         try {
+            UrlSecurityValidator.validateUrl(url, "embeddingUrl");
             String body = objectMapper.writeValueAsString(Map.of("model", model, "input", text));
             HttpRequest.Builder req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -87,6 +98,8 @@ public class EmbeddingService {
             String baseUrl = provider.getBaseUrl();
             if (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             String url = baseUrl + (baseUrl.endsWith("/v1") ? "/embeddings" : "/v1/embeddings");
+
+            UrlSecurityValidator.validateUrl(url, "embeddingUrl");
 
             String apiKey = extractApiKey(provider);
             String body = objectMapper.writeValueAsString(Map.of(
@@ -142,15 +155,7 @@ public class EmbeddingService {
     }
 
     private String extractApiKey(ProviderEntity provider) {
-        try {
-            String auth = provider.getAuthConfig();
-            if (auth == null || auth.isEmpty()) return null;
-            String json = com.hify.common.crypto.AesEncryptor.decrypt(auth);
-            JsonNode root = objectMapper.readTree(json);
-            return root.has("apiKey") ? root.get("apiKey").asText() : null;
-        } catch (Exception e) {
-            return null;
-        }
+        return AuthConfigHelper.extractApiKey(provider.getAuthConfig());
     }
 
     public String vecToString(float[] vec) {

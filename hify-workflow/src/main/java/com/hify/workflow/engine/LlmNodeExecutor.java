@@ -1,9 +1,11 @@
 package com.hify.workflow.engine;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hify.common.crypto.AesEncryptor;
+import com.hify.common.util.JsonUtils;
+import com.hify.common.util.TemplateVariableResolver;
+import com.hify.provider.util.AuthConfigHelper;
 import com.hify.mcp.mcp.McpClientManager;
 import com.hify.mcp.mcp.ToolDef;
 import com.hify.mcp.mcp.ToolResult;
@@ -12,10 +14,9 @@ import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
-import com.hify.provider.entity.ProviderModelEntity;
+
 import com.hify.provider.mapper.ModelConfigMapper;
-import com.hify.provider.mapper.ProviderMapper;
-import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.provider.service.ProviderDiscoveryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -28,8 +29,7 @@ import java.util.*;
 public class LlmNodeExecutor implements NodeExecutor {
 
     private final ModelConfigMapper modelConfigMapper;
-    private final ProviderMapper providerMapper;
-    private final ProviderModelMapper providerModelMapper;
+    private final ProviderDiscoveryService providerDiscoveryService;
     private final ProviderAdapterFactory adapterFactory;
     private final ObjectMapper objectMapper;
     private final McpClientManager mcpClientManager;
@@ -63,7 +63,7 @@ public class LlmNodeExecutor implements NodeExecutor {
                     .errorMsg("LLM 节点缺少 Prompt").build();
         }
 
-        prompt = resolveVariables(prompt, ctx.getVariables());
+        prompt = TemplateVariableResolver.resolve(prompt, ctx.getVariables());
 
         try {
             ModelConfigEntity modelConfig = modelConfigMapper.selectById(modelConfigId);
@@ -106,7 +106,7 @@ public class LlmNodeExecutor implements NodeExecutor {
                 for (ProviderAdapter.ToolCall tc : toolCalls) {
                     Map<String, Object> func = new LinkedHashMap<>();
                     func.put("name", tc.getName());
-                    func.put("arguments", toJson(tc.getArguments()));
+                    func.put("arguments", JsonUtils.toJson(tc.getArguments()));
                     tcMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
                             "type", "function", "function", func));
                 }
@@ -134,15 +134,7 @@ public class LlmNodeExecutor implements NodeExecutor {
 
             Map<String, Object> output = new LinkedHashMap<>();
             output.put("content", lastContent != null ? lastContent : "");
-            String jsonStr = extractJson(lastContent);
-            if (jsonStr != null) {
-                try {
-                    Map<String, Object> parsed = objectMapper.readValue(jsonStr,
-                            new TypeReference<Map<String, Object>>() {});
-                    output.putAll(parsed);
-                } catch (Exception ignored) {
-                }
-            }
+            tryMergeStructuredOutput(lastContent, output);
 
             return NodeExecResult.builder().success(true).output(output).build();
         } catch (Exception e) {
@@ -159,14 +151,6 @@ public class LlmNodeExecutor implements NodeExecutor {
         Boolean enabled = (Boolean) config.get("toolsEnabled");
         if (!Boolean.TRUE.equals(enabled)) return null;
         return allTools;
-    }
-
-    private String toJson(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (Exception e) {
-            return "{}";
-        }
     }
 
     private ToolResult executeToolCall(ProviderAdapter.ToolCall tc,
@@ -191,30 +175,23 @@ public class LlmNodeExecutor implements NodeExecutor {
     }
 
     private ProviderEntity findProvider(String modelId) {
-        List<ProviderModelEntity> pmList = providerModelMapper.selectList(
-                new LambdaQueryWrapper<ProviderModelEntity>()
-                        .eq(ProviderModelEntity::getModelId, modelId));
-        for (ProviderModelEntity pm : pmList) {
-            ProviderEntity p = providerMapper.selectById(pm.getProviderId());
-            if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
-                return p;
-            }
-        }
-        return null;
+        return providerDiscoveryService.findAvailableProviderByModelId(modelId);
     }
 
     private Map<String, Object> decryptAuth(ProviderEntity provider) {
-        try {
-            String authJson = null;
-            String encrypted = provider.getAuthConfig();
-            if (encrypted != null && !encrypted.isEmpty()) {
-                authJson = AesEncryptor.decrypt(encrypted);
+        return AuthConfigHelper.decryptAuthConfig(provider.getAuthConfig());
+    }
+
+    /** 尝试从 LLM 响应中提取 JSON 结构并合并到 output Map。 */
+    void tryMergeStructuredOutput(String content, Map<String, Object> output) {
+        String jsonStr = extractJson(content);
+        if (jsonStr != null) {
+            try {
+                Map<String, Object> parsed = objectMapper.readValue(jsonStr,
+                        new TypeReference<Map<String, Object>>() {});
+                output.putAll(parsed);
+            } catch (Exception ignored) {
             }
-            return objectMapper.readValue(authJson,
-                    new TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
-            log.error("Failed to decrypt auth config for provider {}", provider.getId(), e);
-            return Map.of();
         }
     }
 
@@ -233,21 +210,4 @@ public class LlmNodeExecutor implements NodeExecutor {
         return null;
     }
 
-    private String resolveVariables(String template, Map<String, Object> variables) {
-        if (variables == null || variables.isEmpty()) return template;
-        String result = template;
-        for (Map.Entry<String, Object> entry : variables.entrySet()) {
-            if (entry.getValue() instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> nested = (Map<String, Object>) entry.getValue();
-                for (Map.Entry<String, Object> ne : nested.entrySet()) {
-                    result = result.replace("{{" + entry.getKey() + "." + ne.getKey() + "}}",
-                            ne.getValue() != null ? ne.getValue().toString() : "");
-                }
-            }
-            result = result.replace("{{" + entry.getKey() + "}}",
-                    entry.getValue() != null ? entry.getValue().toString() : "");
-        }
-        return result;
-    }
 }

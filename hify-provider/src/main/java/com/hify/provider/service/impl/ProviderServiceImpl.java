@@ -1,7 +1,7 @@
 package com.hify.provider.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.databind.JsonNode;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
@@ -9,7 +9,7 @@ import com.hify.common.result.PageResult;
 import com.hify.common.util.UrlSecurityValidator;
 import com.hify.common.util.PageHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.hify.provider.adapter.AbstractProviderAdapter;
+
 import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
 import com.hify.provider.constant.ProviderConstant;
@@ -24,6 +24,7 @@ import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderHealthMapper;
 import com.hify.provider.mapper.ProviderMapper;
 import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.provider.service.ProviderHealthService;
 import com.hify.provider.service.ProviderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +33,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final ProviderMapper providerMapper;
     private final ModelConfigMapper modelConfigMapper;
     private final ProviderHealthMapper providerHealthMapper;
+    private final ProviderHealthService providerHealthService;
     private final ProviderModelMapper providerModelMapper;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
@@ -86,7 +88,8 @@ public class ProviderServiceImpl implements ProviderService {
     }
 
     /** 调用 Provider API 获取模型列表，按 model_id 去重写入 model_config，记录到 provider_model */
-    private void syncModels(ProviderEntity provider, Map<String, Object> authConfig) {
+    @Override
+    public void syncModels(ProviderEntity provider, Map<String, Object> authConfig) {
         try {
             ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
             List<String> modelIds = adapter.listModelIds(provider.getBaseUrl(), authConfig);
@@ -190,7 +193,12 @@ public class ProviderServiceImpl implements ProviderService {
                 new LambdaQueryWrapper<ProviderModelEntity>()
                         .eq(ProviderModelEntity::getProviderId, id));
 
-        // 4. 对每个受影响的 model_id，重新计算 provider_count
+        recalculateModelProviderCounts(affectedModelIds, id);
+
+        evictProviderCache(id);
+    }
+
+    private void recalculateModelProviderCounts(List<String> affectedModelIds, Long deletedProviderId) {
         for (String modelId : affectedModelIds) {
             long remaining = providerModelMapper.selectCount(
                     new LambdaQueryWrapper<ProviderModelEntity>()
@@ -204,9 +212,8 @@ public class ProviderServiceImpl implements ProviderService {
             if (mc != null) {
                 mc.setProviderCount((int) remaining);
                 if (remaining <= 0) {
-                    mc.setStatus(0); // 无提供商，停用
-                } else if (mc.getProviderId().equals(id)) {
-                    // 将 provider_id 指向另一个可用提供商
+                    mc.setStatus(0);
+                } else if (mc.getProviderId().equals(deletedProviderId)) {
                     Page<ProviderModelEntity> altPage = providerModelMapper.selectPage(
                             Page.of(1, 1),
                             new LambdaQueryWrapper<ProviderModelEntity>()
@@ -219,8 +226,6 @@ public class ProviderServiceImpl implements ProviderService {
                 modelConfigMapper.updateById(mc);
             }
         }
-
-        evictProviderCache(id);
     }
 
     @Override
@@ -235,30 +240,8 @@ public class ProviderServiceImpl implements ProviderService {
                 .map(this::convertToResponse)
                 .toList();
 
-        // 批量填充：健康状态 + 模型数
-        List<Long> providerIds = responses.stream().map(ProviderResponse::getId).toList();
-        if (!providerIds.isEmpty()) {
-            var healthMap = providerHealthMapper.selectList(
-                            new LambdaQueryWrapper<ProviderHealthEntity>()
-                                    .in(ProviderHealthEntity::getProviderId, providerIds))
-                    .stream()
-                    .collect(java.util.stream.Collectors.toMap(
-                            ProviderHealthEntity::getProviderId, h -> h, (a, b) -> a));
-
-            // modelCount：从 provider_model 统计每个 Provider 的模型数
-            var modelCountMap = new java.util.HashMap<Long, Long>();
-            for (Long pid : providerIds) {
-                long c = providerModelMapper.selectCount(
-                        new LambdaQueryWrapper<ProviderModelEntity>()
-                                .eq(ProviderModelEntity::getProviderId, pid));
-                modelCountMap.put(pid, c);
-            }
-
-            for (ProviderResponse resp : responses) {
-                resp.setHealth(healthMap.get(resp.getId()));
-                resp.setModelCount(modelCountMap.getOrDefault(resp.getId(), 0L).intValue());
-            }
-        }
+        enrichHealthStatus(responses);
+        enrichModelCounts(responses);
 
         return PageResult.ok(
                 responses,
@@ -305,7 +288,7 @@ public class ProviderServiceImpl implements ProviderService {
         // 策略模式：根据 type 获取对应 Adapter
         ProviderAdapter adapter = adapterFactory.getAdapter(entity.getType());
         ConnectionTestResult result = adapter.testConnection(entity, authConfig);
-        updateProviderHealth(providerId, result);
+        providerHealthService.updateHealthRecord(providerId, result);
         // 同步模型列表（连通成功了就更新 model_config）
         if (result.isSuccess()) syncModels(entity, authConfig);
         return result;
@@ -319,38 +302,6 @@ public class ProviderServiceImpl implements ProviderService {
         temp.setType(type);
         ProviderAdapter adapter = adapterFactory.getAdapter(type);
         return adapter.testConnection(temp, authConfig);
-    }
-
-    @SuppressWarnings("unchecked")
-    private void updateProviderHealth(Long providerId, ConnectionTestResult result) {
-        ProviderHealthEntity health = providerHealthMapper.selectById(providerId);
-        boolean isNew = health == null;
-        if (isNew) {
-            health = new ProviderHealthEntity();
-            health.setProviderId(providerId);
-        }
-        health.setLastCheckTime(java.time.LocalDateTime.now());
-        if (result.isSuccess()) {
-            health.setStatus("HEALTHY");
-            health.setConsecutiveFailures(0);
-            health.setAvgLatencyMs((int) result.getLatencyMs());
-            health.setLastSuccessTime(java.time.LocalDateTime.now());
-            health.setLastErrorTime(null);
-            health.setLastErrorMsg(null);
-        } else {
-            int fails = health.getConsecutiveFailures() != null ? health.getConsecutiveFailures() + 1 : 1;
-            health.setConsecutiveFailures(fails);
-            health.setLastErrorTime(java.time.LocalDateTime.now());
-            health.setLastErrorMsg(result.getErrorMessage());
-            if (fails >= 3) {
-                health.setStatus("DOWN");
-            }
-        }
-        if (isNew) {
-            providerHealthMapper.insert(health);
-        } else {
-            providerHealthMapper.updateById(health);
-        }
     }
 
     private ProviderEntity getProviderById(Long id) {
@@ -414,6 +365,29 @@ public class ProviderServiceImpl implements ProviderService {
             } catch (Exception e) {
                 log.warn("Cache evict failed for provider {}", id, e);
             }
+        }
+    }
+
+    private void enrichHealthStatus(List<ProviderResponse> responses) {
+        List<Long> providerIds = responses.stream().map(ProviderResponse::getId).toList();
+        if (providerIds.isEmpty()) return;
+        var healthMap = providerHealthMapper.selectList(
+                        new LambdaQueryWrapper<ProviderHealthEntity>()
+                                .in(ProviderHealthEntity::getProviderId, providerIds))
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProviderHealthEntity::getProviderId, h -> h, (a, b) -> a));
+        for (ProviderResponse resp : responses) {
+            resp.setHealth(healthMap.get(resp.getId()));
+        }
+    }
+
+    private void enrichModelCounts(List<ProviderResponse> responses) {
+        for (ProviderResponse resp : responses) {
+            long c = providerModelMapper.selectCount(
+                    new LambdaQueryWrapper<ProviderModelEntity>()
+                            .eq(ProviderModelEntity::getProviderId, resp.getId()));
+            resp.setModelCount((int) c);
         }
     }
 

@@ -4,6 +4,7 @@ import com.hify.common.result.PageResult;
 import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.dto.ProviderRequest;
 import com.hify.provider.dto.ProviderResponse;
+import com.hify.provider.entity.ProviderEntity;
 
 import java.util.Map;
 
@@ -46,4 +47,10 @@ public interface ProviderService {
      * 测试提供商连通性（通过 ID）
      */
     ConnectionTestResult testConnection(Long providerId);
+
+    /**
+     * 同步 Provider 的模型列表到 model_config 表。
+     * ProviderHealthScheduler 定时调用此方法，避免重复同步逻辑。
+     */
+    void syncModels(ProviderEntity provider, Map<String, Object> authConfig);
 }

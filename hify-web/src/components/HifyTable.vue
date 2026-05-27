@@ -26,6 +26,7 @@
             v-bind="scope"
           />
           <span v-else-if="col.formatter">{{ col.formatter(scope.row[col.prop], scope.row) }}</span>
+          <span v-else-if="col.type === 'datetime'">{{ formatDateTime(scope.row[col.prop]) }}</span>
           <span v-else>{{ scope.row[col.prop] }}</span>
         </template>
       </el-table-column>
@@ -66,6 +67,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import type { PageResult } from '@/types/common'
+import { formatDateTime } from '@/utils/date'
 
 // 列配置类型
 export interface TableColumn<T = any> {
@@ -78,6 +80,7 @@ export interface TableColumn<T = any> {
   fixed?: 'left' | 'right' | boolean
   slot?: string
   formatter?: (val: any, row: T) => string
+  type?: 'datetime'
 }
 
 // API 类型

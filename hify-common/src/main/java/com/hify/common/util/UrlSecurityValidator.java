@@ -1,9 +1,11 @@
 package com.hify.common.util;
 
+import java.net.InetAddress;
 import java.util.Set;
 
 /**
- * URL 安全验证器 - 防止 SSRF 攻击
+ * URL 安全验证器 - 防止 SSRF 攻击。
+ * 在 URL 合法性校验时进行 DNS 解析并检查所有解析 IP，防止 DNS 重绑定绕过。
  */
 public class UrlSecurityValidator {
 
@@ -12,7 +14,9 @@ public class UrlSecurityValidator {
             "127.", "10.", "192.168.", "169.254.", "0.", "255."
     );
 
-    // 172.16.0.0/12 私有地址段
+    // 172.16.0.0/12 私有地址段 (RFC 1918)
+    // 覆盖范围: 172.16.0.0 - 172.31.255.255
+    // Docker 默认网桥 172.17.0.0/16 在此范围内被正确拦截
     private static final int[] BLOCKED_172_RANGES = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
 
     // 允许 HTTP 连接的本地地址（开发/Ollama 场景）
@@ -62,7 +66,33 @@ public class UrlSecurityValidator {
             return false;
         }
 
+        // 7. DNS 重绑定防护：将非本地主机名解析为 IP 并检查所有解析结果
+        if (!isLocalhost && !isIpAddress(host) && hasInternalResolvedIp(host)) {
+            return false;
+        }
+
         return true;
+    }
+
+    /** 检查主机名 DNS 解析后的 IP 是否包含内网地址 */
+    private static boolean hasInternalResolvedIp(String host) {
+        try {
+            InetAddress[] addresses = InetAddress.getAllByName(host);
+            for (InetAddress addr : addresses) {
+                String ip = addr.getHostAddress();
+                if (isInternalIp(ip)) return true;
+            }
+        } catch (Exception e) {
+            // 解析失败视为可疑，拒绝
+            return true;
+        }
+        return false;
+    }
+
+    /** 判断是否为 IP 地址（v4 或 v6） */
+    private static boolean isIpAddress(String host) {
+        if (host.contains(":")) return true; // v6
+        return host.chars().allMatch(c -> c == '.' || (c >= '0' && c <= '9'));
     }
 
     /**

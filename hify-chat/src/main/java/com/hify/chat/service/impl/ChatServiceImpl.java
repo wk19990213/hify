@@ -18,6 +18,7 @@ import com.hify.chat.service.ChatService;
 import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
 import com.hify.common.http.StreamCallback;
+import com.hify.common.util.JsonUtils;
 import com.hify.common.resilience.CircuitBreakerService;
 import com.hify.common.util.LogSanitizer;
 import com.hify.knowledge.dto.RagResp;
@@ -30,12 +31,14 @@ import okhttp3.Call;
 import com.hify.provider.adapter.ChatRequest;
 import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
+import com.hify.provider.util.AuthConfigHelper;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
 import com.hify.provider.entity.ProviderModelEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderMapper;
 import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.provider.service.ProviderDiscoveryService;
 import com.hify.workflow.dto.WorkflowInstanceResp;
 import com.hify.workflow.dto.WorkflowRunReq;
 import com.hify.workflow.service.WorkflowService;
@@ -72,6 +75,7 @@ public class ChatServiceImpl implements ChatService {
     private final ModelConfigMapper modelConfigMapper;
     private final ProviderMapper providerMapper;
     private final ProviderModelMapper providerModelMapper;
+    private final ProviderDiscoveryService providerDiscoveryService;
     private final ProviderAdapterFactory adapterFactory;
     private final CircuitBreakerService circuitBreakerService;
     private final KnowledgeService knowledgeService;
@@ -200,45 +204,14 @@ public class ChatServiceImpl implements ChatService {
             );
             totalTokens += ctx.adapter.extractTokenCount(llmResponse);
 
+            content = ctx.adapter.extractContent(llmResponse);
+            finishReason = ctx.adapter.extractFinishReason(llmResponse);
             List<ToolCall> toolCalls = ctx.adapter.extractToolCalls(llmResponse);
             if (toolCalls == null || toolCalls.isEmpty() || tools == null) {
-                content = ctx.adapter.extractContent(llmResponse);
-                finishReason = ctx.adapter.extractFinishReason(llmResponse);
                 break;
             }
-
-            // 追加 assistant 消息（含 tool calls）
-            String assistantContent = ctx.adapter.extractContent(llmResponse);
-            String reasoningContent = extractReasoning(llmResponse);
-            List<Map<String, Object>> toolCallMaps = new ArrayList<>();
-            for (ToolCall tc : toolCalls) {
-                Map<String, Object> func = new java.util.LinkedHashMap<>();
-                func.put("name", tc.getName());
-                func.put("arguments", toJson(tc.getArguments()));
-                toolCallMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
-                        "type", "function", "function", func));
-            }
-            Map<String, Object> assistantMsg = new java.util.LinkedHashMap<>();
-            assistantMsg.put("role", "assistant");
-            assistantMsg.put("content", assistantContent != null ? assistantContent : "");
-            if (reasoningContent != null) {
-                assistantMsg.put("reasoning_content", reasoningContent);
-            }
-            assistantMsg.put("tool_calls", toolCallMaps);
-            messages.add(assistantMsg);
-
-            // 执行工具调用并追加 tool 消息
-            for (ToolCall tc : toolCalls) {
-                ToolDef def = findToolDef(tools, tc.getName());
-                Long serverId = def != null ? def.getServerId() : null;
-                if (serverId == null) continue;
-                ToolResult tr = mcpClientManager.callTool(serverId, tc.getName(), tc.getArguments());
-                Map<String, Object> toolMsg = new java.util.LinkedHashMap<>();
-                toolMsg.put("role", "tool");
-                toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
-                toolMsg.put("content", tr.isSuccess() ? tr.getContent() : "Error: " + tr.getError());
-                messages.add(toolMsg);
-            }
+            executeToolCalls(ctx.adapter, llmResponse, toolCalls, tools, messages);
+            content = null; // 仍需下一轮
         }
 
         // 如果 3 轮后仍为 null，取最后一条 assistant 消息
@@ -271,41 +244,7 @@ public class ChatServiceImpl implements ChatService {
 
         // 检查 Agent 是否绑定了工作流
         if (ctx.agent.getWorkflowId() != null) {
-            saveUserMessage(sessionId, session, req.getContent());
-
-            SseEmitter wfEmitter = new SseEmitter(SSE_TIMEOUT_MS);
-            Map<String, Object> workflowInput = new java.util.HashMap<>();
-            workflowInput.put("user_message", req.getContent());
-            workflowInput.put("session_id", sessionId);
-            WorkflowRunReq runReq = new WorkflowRunReq();
-            runReq.setInput(workflowInput);
-            runReq.setSessionId(sessionId);
-            runReq.setModelConfigId(ctx.agent.getModelConfigId());
-            runReq.setTools(resolveAgentTools(ctx.agent.getId()));
-            final Long workflowId = ctx.agent.getWorkflowId();
-
-            workflowExecutor.execute(() -> {
-                try {
-                    WorkflowInstanceResp wfResp = workflowService.run(workflowId, runReq);
-                    String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
-                    wfEmitter.send(SseEmitter.event().data(wfOutput));
-                    wfEmitter.send(SseEmitter.event().data("[DONE]"));
-
-                    // 保存助手消息
-                    ChatMessageEntity assistantMsg = new ChatMessageEntity();
-                    assistantMsg.setSessionId(sessionId);
-                    assistantMsg.setRole("assistant");
-                    assistantMsg.setContent(wfOutput);
-                    assistantMsg.setTokenCount(0);
-                    messageMapper.insert(assistantMsg);
-
-                    wfEmitter.complete();
-                } catch (Exception e) {
-                    wfEmitter.completeWithError(e);
-                }
-            });
-
-            return wfEmitter;
+            return handleWorkflowStream(sessionId, session, ctx, req);
         }
 
         List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent, req.getContent());
@@ -330,12 +269,10 @@ public class ChatServiceImpl implements ChatService {
                 );
                 List<ToolCall> toolCalls = ctx.adapter.extractToolCalls(respBody);
                 if (toolCalls == null || toolCalls.isEmpty()) {
-                    // LLM 最终决定不调工具 → 直接推送文本并跳过 streamChat
                     String assistantContent = ctx.adapter.extractContent(respBody);
                     if (assistantContent != null && !assistantContent.isEmpty()) {
                         messages.add(Map.<String, Object>of("role", "assistant", "content", assistantContent));
                     }
-                    // 直接 SSE 推送结果（避免 streamChat 产生双重 assistant 消息）
                     try {
                         emitter.send(SseEmitter.event().data(
                                 assistantContent != null ? assistantContent : ""));
@@ -346,35 +283,7 @@ public class ChatServiceImpl implements ChatService {
                     emitter.complete();
                     return emitter;
                 }
-                String assistantContent = ctx.adapter.extractContent(respBody);
-                String reasoningContent = extractReasoning(respBody);
-                List<Map<String, Object>> tcMaps = new ArrayList<>();
-                for (ToolCall tc : toolCalls) {
-                    Map<String, Object> func = new java.util.LinkedHashMap<>();
-                    func.put("name", tc.getName());
-                    func.put("arguments", toJson(tc.getArguments()));
-                    tcMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
-                            "type", "function", "function", func));
-                }
-                Map<String, Object> asstMsg = new java.util.LinkedHashMap<>();
-                asstMsg.put("role", "assistant");
-                asstMsg.put("content", assistantContent != null ? assistantContent : "");
-                if (reasoningContent != null) {
-                    asstMsg.put("reasoning_content", reasoningContent);
-                }
-                asstMsg.put("tool_calls", tcMaps);
-                messages.add(asstMsg);
-                for (ToolCall tc : toolCalls) {
-                    ToolDef def = findToolDef(tools, tc.getName());
-                    Long serverId = def != null ? def.getServerId() : null;
-                    if (serverId == null) continue;
-                    ToolResult tr = mcpClientManager.callTool(serverId, tc.getName(), tc.getArguments());
-                    Map<String, Object> toolMsg = new java.util.LinkedHashMap<>();
-                    toolMsg.put("role", "tool");
-                    toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
-                    toolMsg.put("content", tr.isSuccess() ? tr.getContent() : "Error: " + tr.getError());
-                    messages.add(toolMsg);
-                }
+                executeToolCalls(ctx.adapter, respBody, toolCalls, tools, messages);
             }
         }
 
@@ -434,6 +343,44 @@ public class ChatServiceImpl implements ChatService {
         return emitter;
     }
 
+    private SseEmitter handleWorkflowStream(Long sessionId, ChatSessionEntity session,
+                                             AgentContext ctx, SendMessageReq req) {
+        saveUserMessage(sessionId, session, req.getContent());
+
+        SseEmitter wfEmitter = new SseEmitter(SSE_TIMEOUT_MS);
+        Map<String, Object> workflowInput = new java.util.HashMap<>();
+        workflowInput.put("user_message", req.getContent());
+        workflowInput.put("session_id", sessionId);
+        WorkflowRunReq runReq = new WorkflowRunReq();
+        runReq.setInput(workflowInput);
+        runReq.setSessionId(sessionId);
+        runReq.setModelConfigId(ctx.agent.getModelConfigId());
+        runReq.setTools(resolveAgentTools(ctx.agent.getId()));
+        final Long workflowId = ctx.agent.getWorkflowId();
+
+        workflowExecutor.execute(() -> {
+            try {
+                WorkflowInstanceResp wfResp = workflowService.run(workflowId, runReq);
+                String wfOutput = extractWorkflowOutput(wfResp.getOutputJson());
+                wfEmitter.send(SseEmitter.event().data(wfOutput));
+                wfEmitter.send(SseEmitter.event().data("[DONE]"));
+
+                ChatMessageEntity assistantMsg = new ChatMessageEntity();
+                assistantMsg.setSessionId(sessionId);
+                assistantMsg.setRole("assistant");
+                assistantMsg.setContent(wfOutput);
+                assistantMsg.setTokenCount(0);
+                messageMapper.insert(assistantMsg);
+
+                wfEmitter.complete();
+            } catch (Exception e) {
+                wfEmitter.completeWithError(e);
+            }
+        });
+
+        return wfEmitter;
+    }
+
     @Transactional
     void saveAssistantMessage(Long sessionId, String content, AgentContext ctx, int latencyMs) {
         ChatMessageEntity msg = new ChatMessageEntity();
@@ -487,16 +434,8 @@ public class ChatServiceImpl implements ChatService {
         ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
 
         // 解密 authConfig
-        Map<String, Object> authConfig = null;
-        String encrypted = provider.getAuthConfig();
-        if (encrypted != null && !encrypted.isEmpty()) {
-            try {
-                String json = AesEncryptor.decrypt(encrypted);
-                authConfig = objectMapper.readValue(json, Map.class);
-            } catch (Exception e) {
-                log.error("Failed to decrypt or parse authConfig", e);
-            }
-        }
+        Map<String, Object> authConfig = AuthConfigHelper.decryptAuthConfig(provider.getAuthConfig());
+        if (authConfig.isEmpty()) authConfig = null;
 
         return new AgentContext(agent, modelConfig.getModelId(), provider, adapter, authConfig);
     }
@@ -539,22 +478,7 @@ public class ChatServiceImpl implements ChatService {
      * 查找可用的 Provider，优先使用 model_config 记录的 provider_id
      */
     private ProviderEntity findAvailableProvider(ModelConfigEntity modelConfig) {
-        List<ProviderModelEntity> pmList = providerModelMapper.selectList(
-                new LambdaQueryWrapper<ProviderModelEntity>()
-                        .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
-
-        ProviderEntity provider = null;
-        for (ProviderModelEntity pm : pmList) {
-            ProviderEntity p = providerMapper.selectById(pm.getProviderId());
-            if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
-                if (p.getId().equals(modelConfig.getProviderId())) {
-                    return p;
-                }
-                if (provider == null) {
-                    provider = p;
-                }
-            }
-        }
+        ProviderEntity provider = providerDiscoveryService.findAvailableProviderByModelId(modelConfig.getModelId());
         if (provider == null) {
             throw BizException.notFound("模型的所有提供商均不可用");
         }
@@ -714,17 +638,45 @@ public class ChatServiceImpl implements ChatService {
         return tools.isEmpty() ? null : tools;
     }
 
+    /** 执行工具调用并将 assistant+tool 消息追加到消息列表 */
+    private void executeToolCalls(ProviderAdapter adapter, String llmResponse,
+                                   List<ToolCall> toolCalls, List<ToolDef> tools,
+                                   List<Map<String, Object>> messages) {
+        String assistantContent = adapter.extractContent(llmResponse);
+        String reasoningContent = extractReasoning(llmResponse);
+        List<Map<String, Object>> toolCallMaps = new ArrayList<>();
+        for (ToolCall tc : toolCalls) {
+            Map<String, Object> func = new java.util.LinkedHashMap<>();
+            func.put("name", tc.getName());
+            func.put("arguments", JsonUtils.toJson(tc.getArguments()));
+            toolCallMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
+                    "type", "function", "function", func));
+        }
+        Map<String, Object> assistantMsg = new java.util.LinkedHashMap<>();
+        assistantMsg.put("role", "assistant");
+        assistantMsg.put("content", assistantContent != null ? assistantContent : "");
+        if (reasoningContent != null) {
+            assistantMsg.put("reasoning_content", reasoningContent);
+        }
+        assistantMsg.put("tool_calls", toolCallMaps);
+        messages.add(assistantMsg);
+
+        for (ToolCall tc : toolCalls) {
+            ToolDef def = findToolDef(tools, tc.getName());
+            Long serverId = def != null ? def.getServerId() : null;
+            if (serverId == null) continue;
+            ToolResult tr = mcpClientManager.callTool(serverId, tc.getName(), tc.getArguments());
+            Map<String, Object> toolMsg = new java.util.LinkedHashMap<>();
+            toolMsg.put("role", "tool");
+            toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
+            toolMsg.put("content", tr.isSuccess() ? tr.getContent() : "Error: " + tr.getError());
+            messages.add(toolMsg);
+        }
+    }
+
     private ToolDef findToolDef(List<ToolDef> tools, String name) {
         if (tools == null) return null;
         return tools.stream().filter(t -> t.getName().equals(name)).findFirst().orElse(null);
-    }
-
-    private String toJson(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            return "{}";
-        }
     }
 
     private String extractReasoning(String responseBody) {

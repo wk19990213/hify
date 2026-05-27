@@ -50,55 +50,16 @@ public class WorkflowEngine {
             throw BizException.paramError("工作流没有节点");
         }
 
-        // 2. 构建 DAG 邻接表 + 入度计算
-        Map<Long, WorkflowNodeEntity> nodeMap = new HashMap<>();
-        for (WorkflowNodeEntity node : nodes) {
-            nodeMap.put(node.getId(), node);
-        }
-
-        Map<Long, Integer> inDegree = new HashMap<>();
-        for (WorkflowNodeEntity node : nodes) {
-            inDegree.put(node.getId(), 0);
-        }
-        Map<Long, List<WorkflowEdgeEntity>> outEdges = new HashMap<>();
-        for (WorkflowNodeEntity node : nodes) {
-            outEdges.put(node.getId(), new ArrayList<>());
-        }
-        for (WorkflowEdgeEntity edge : edges) {
-            outEdges.get(edge.getSourceNodeId()).add(edge);
-            inDegree.merge(edge.getTargetNodeId(), 1, Integer::sum);
-        }
-
-        // 3. 拓扑排序找起点（入度为 0 的节点）
-        Long startNodeId = null;
-        for (Map.Entry<Long, Integer> entry : inDegree.entrySet()) {
-            if (entry.getValue() == 0) {
-                startNodeId = entry.getKey();
-                break;
-            }
-        }
-        if (startNodeId == null) {
-            throw BizException.paramError("工作流存在环路，无法找到起始节点");
-        }
-
-        // 4. 创建执行实例
-        WorkflowInstanceEntity instance = new WorkflowInstanceEntity();
-        instance.setWorkflowId(workflowId);
-        instance.setSessionId(sessionId);
-        instance.setTriggerType(triggerType);
-        instance.setStatus("running");
-        try {
-            instance.setInputJson(objectMapper.writeValueAsString(input));
-        } catch (Exception ignored) {}
-        instance.setStartedAt(LocalDateTime.now());
-        instanceMapper.insert(instance);
+        DagGraph dag = buildDagGraph(nodes, edges);
+        Long startNodeId = findStartNode(dag.inDegree);
+        WorkflowInstanceEntity instance = createInstance(workflowId, sessionId, triggerType, input);
 
         // 5. 执行 DAG
         Map<String, Object> variables = new HashMap<>();
         variables.put("input", input);
 
         try {
-            Object lastOutput = executeNode(startNodeId, nodeMap, outEdges, variables, instance.getId(), modelConfigId, tools);
+            Object lastOutput = executeNode(startNodeId, dag.nodeMap, dag.outEdges, variables, instance.getId(), modelConfigId, tools);
             instance.setStatus("success");
             try {
                 instance.setOutputJson(objectMapper.writeValueAsString(lastOutput));
@@ -138,51 +99,15 @@ public class WorkflowEngine {
         NodeExecResult result = executeWithRetry(executor, node, nodeId, variables,
                 modelConfigId, tools, exec);
 
-        // 失败时检查 error 边
         if (!result.isSuccess()) {
-            List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
-            for (WorkflowEdgeEntity edge : edges) {
-                if ("error".equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
-                }
-            }
-            throw new RuntimeException("节点 " + node.getName() + " 执行失败: " + result.getErrorMsg());
+            return handleErrorRouting(node, nodeId, nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
         }
 
-        // 存储输出到变量，key 使用节点名（去重），同时保留节点 ID 兼容旧表达式
         String varKey = generateVarKey(node.getName(), variables);
         variables.put(varKey, result.getOutput());
         variables.put(String.valueOf(nodeId), result.getOutput());
 
-        // 根据出边决定下一节点
-        List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
-        if (edges.isEmpty()) {
-            return result.getOutput();
-        }
-
-        // 条件节点：评估结果决定走 true 还是 false 边
-        if ("condition".equals(node.getType()) && result.getOutput() instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> outputMap = (Map<String, Object>) result.getOutput();
-            boolean conditionResult = outputMap.get("result") instanceof Boolean
-                    ? (Boolean) outputMap.get("result") : false;
-            String targetEdgeType = conditionResult ? "true" : "false";
-            for (WorkflowEdgeEntity edge : edges) {
-                if (targetEdgeType.equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
-                }
-            }
-            return result.getOutput();
-        }
-
-        // 普通节点：取第一条 normal 边
-        for (WorkflowEdgeEntity edge : edges) {
-            if ("normal".equals(edge.getEdgeType())) {
-                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
-            }
-        }
-
-        return result.getOutput();
+        return handleNextRouting(node, nodeId, result, nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
     }
 
     /** 带重试执行节点并更新执行记录 */
@@ -258,4 +183,90 @@ public class WorkflowEngine {
         } catch (Exception ignored) {}
         return 0;
     }
+
+    // -- DAG 构建 -----------------------------------------------
+
+    private DagGraph buildDagGraph(List<WorkflowNodeEntity> nodes, List<WorkflowEdgeEntity> edges) {
+        Map<Long, WorkflowNodeEntity> nodeMap = new HashMap<>();
+        for (WorkflowNodeEntity node : nodes) {
+            nodeMap.put(node.getId(), node);
+        }
+        Map<Long, Integer> inDegree = new HashMap<>();
+        for (WorkflowNodeEntity node : nodes) {
+            inDegree.put(node.getId(), 0);
+        }
+        Map<Long, List<WorkflowEdgeEntity>> outEdges = new HashMap<>();
+        for (WorkflowNodeEntity node : nodes) {
+            outEdges.put(node.getId(), new ArrayList<>());
+        }
+        for (WorkflowEdgeEntity edge : edges) {
+            outEdges.get(edge.getSourceNodeId()).add(edge);
+            inDegree.merge(edge.getTargetNodeId(), 1, Integer::sum);
+        }
+        return new DagGraph(nodeMap, outEdges, inDegree);
+    }
+
+    private Long findStartNode(Map<Long, Integer> inDegree) {
+        for (Map.Entry<Long, Integer> entry : inDegree.entrySet()) {
+            if (entry.getValue() == 0) return entry.getKey();
+        }
+        throw BizException.paramError("工作流存在环路，无法找到起始节点");
+    }
+
+    private WorkflowInstanceEntity createInstance(Long workflowId, Long sessionId,
+                                                   String triggerType, Map<String, Object> input) {
+        WorkflowInstanceEntity instance = new WorkflowInstanceEntity();
+        instance.setWorkflowId(workflowId);
+        instance.setSessionId(sessionId);
+        instance.setTriggerType(triggerType);
+        instance.setStatus("running");
+        try {
+            instance.setInputJson(objectMapper.writeValueAsString(input));
+        } catch (Exception ignored) {}
+        instance.setStartedAt(LocalDateTime.now());
+        instanceMapper.insert(instance);
+        return instance;
+    }
+
+    private Object handleErrorRouting(WorkflowNodeEntity node, Long nodeId,
+            Map<Long, WorkflowNodeEntity> nodeMap, Map<Long, List<WorkflowEdgeEntity>> outEdges,
+            Map<String, Object> variables, Long instanceId, Long modelConfigId, List<ToolDef> tools) {
+        for (WorkflowEdgeEntity edge : outEdges.get(nodeId)) {
+            if ("error".equals(edge.getEdgeType())) {
+                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+            }
+        }
+        throw new RuntimeException("节点 " + node.getName() + " 执行失败: ...");
+    }
+
+    private Object handleNextRouting(WorkflowNodeEntity node, Long nodeId, NodeExecResult result,
+            Map<Long, WorkflowNodeEntity> nodeMap, Map<Long, List<WorkflowEdgeEntity>> outEdges,
+            Map<String, Object> variables, Long instanceId, Long modelConfigId, List<ToolDef> tools) {
+        List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
+        if (edges.isEmpty()) return result.getOutput();
+
+        if ("condition".equals(node.getType()) && result.getOutput() instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> outputMap = (Map<String, Object>) result.getOutput();
+            boolean cond = outputMap.get("result") instanceof Boolean && (Boolean) outputMap.get("result");
+            String target = cond ? "true" : "false";
+            for (WorkflowEdgeEntity edge : edges) {
+                if (target.equals(edge.getEdgeType())) {
+                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+                }
+            }
+            return result.getOutput();
+        }
+
+        for (WorkflowEdgeEntity edge : edges) {
+            if ("normal".equals(edge.getEdgeType())) {
+                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+            }
+        }
+        return result.getOutput();
+    }
+
+    record DagGraph(Map<Long, WorkflowNodeEntity> nodeMap,
+                    Map<Long, List<WorkflowEdgeEntity>> outEdges,
+                    Map<Long, Integer> inDegree) {}
 }

@@ -2,6 +2,7 @@ package com.hify.workflow.engine;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.util.TemplateVariableResolver;
 import com.hify.common.util.UrlSecurityValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,9 +51,9 @@ public class HttpNodeExecutor implements NodeExecutor {
             return NodeExecResult.builder().success(false).errorMsg("HTTP 节点缺少 URL").build();
         }
 
-        url = resolveVariables(url, ctx.getVariables());
+        url = TemplateVariableResolver.resolve(url, ctx.getVariables());
         if (body != null) {
-            body = resolveVariables(body, ctx.getVariables());
+            body = TemplateVariableResolver.resolve(body, ctx.getVariables());
         }
 
         // SSRF 防护
@@ -98,21 +99,4 @@ public class HttpNodeExecutor implements NodeExecutor {
         }
     }
 
-    private String resolveVariables(String template, Map<String, Object> variables) {
-        if (variables == null || variables.isEmpty()) return template;
-        String result = template;
-        for (Map.Entry<String, Object> entry : variables.entrySet()) {
-            if (entry.getValue() instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> nested = (Map<String, Object>) entry.getValue();
-                for (Map.Entry<String, Object> ne : nested.entrySet()) {
-                    result = result.replace("{{" + entry.getKey() + "." + ne.getKey() + "}}",
-                            ne.getValue() != null ? ne.getValue().toString() : "");
-                }
-            }
-            result = result.replace("{{" + entry.getKey() + "}}",
-                    entry.getValue() != null ? entry.getValue().toString() : "");
-        }
-        return result;
-    }
 }

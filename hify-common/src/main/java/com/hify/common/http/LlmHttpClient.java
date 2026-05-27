@@ -32,9 +32,9 @@ public class LlmHttpClient {
 
     public LlmHttpClient() {
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(
-                msg -> log.debug("OkHttp: {}", msg)
+                msg -> log.trace("OkHttp: {}", msg)
         );
-        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
+        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.NONE);
 
         this.syncClient = new OkHttpClient.Builder()
                 .followRedirects(false)
@@ -93,57 +93,64 @@ public class LlmHttpClient {
         long start = System.currentTimeMillis();
         Request request = buildRequest(url, headers, body);
         Call call = streamClient.newCall(request);
-        call.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call c, IOException e) {
-                long duration = System.currentTimeMillis() - start;
-                if (e instanceof SocketTimeoutException) {
-                    log.error("SSE stream {} timeout ({}ms)", url, duration);
-                    callback.onError(new LlmApiException(LlmApiException.TIMEOUT, "SSE 连接超时", e));
-                } else {
-                    log.error("SSE stream {} failed ({}ms): {}", url, duration, e.getMessage());
-                    callback.onError(new LlmApiException(LlmApiException.API_ERROR, "SSE 连接失败: " + e.getMessage(), e));
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) {
-                long duration = System.currentTimeMillis() - start;
-                int status = response.code();
-                log.info("LLM SSE {} -> {} ({}ms)", url, status, duration);
-
-                if (!response.isSuccessful()) {
-                    String errorBody = "";
-                    try {
-                        if (response.body() != null) {
-                            errorBody = response.body().string();
-                        }
-                    } catch (IOException ignored) {
-                    }
-                    response.close();
-                    callback.onError(mapException(status, errorBody));
-                    return;
-                }
-
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (line.startsWith("data: ")) {
-                            String data = line.substring(6);
-                            if (!"[DONE]".equals(data)) {
-                                callback.onLine(data);
-                            }
-                        }
-                    }
-                    callback.onComplete();
-                } catch (IOException e) {
-                    log.error("SSE stream {} read error: {}", url, e.getMessage());
-                    callback.onError(new LlmApiException(LlmApiException.API_ERROR, "SSE 读取中断", e));
-                }
-            }
-        });
+        call.enqueue(new SseStreamCallback(start, url, callback));
         return call;
+    }
+
+    private class SseStreamCallback implements Callback {
+        private final long start;
+        private final String url;
+        private final StreamCallback callback;
+
+        SseStreamCallback(long start, String url, StreamCallback callback) {
+            this.start = start;
+            this.url = url;
+            this.callback = callback;
+        }
+
+        @Override
+        public void onFailure(Call c, IOException e) {
+            long duration = System.currentTimeMillis() - start;
+            if (e instanceof SocketTimeoutException) {
+                log.error("SSE stream {} timeout ({}ms)", url, duration);
+                callback.onError(new LlmApiException(LlmApiException.TIMEOUT, "SSE 连接超时", e));
+            } else {
+                log.error("SSE stream {} failed ({}ms): {}", url, duration, e.getMessage());
+                callback.onError(new LlmApiException(LlmApiException.API_ERROR, "SSE 连接失败: " + e.getMessage(), e));
+            }
+        }
+
+        @Override
+        public void onResponse(Call call, Response response) {
+            long duration = System.currentTimeMillis() - start;
+            int status = response.code();
+            log.info("LLM SSE {} -> {} ({}ms)", url, status, duration);
+
+            if (!response.isSuccessful()) {
+                String errorBody = "";
+                try {
+                    if (response.body() != null) errorBody = response.body().string();
+                } catch (IOException ignored) {}
+                response.close();
+                callback.onError(mapException(status, errorBody));
+                return;
+            }
+
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(response.body().byteStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("data: ")) {
+                        String data = line.substring(6);
+                        if (!"[DONE]".equals(data)) callback.onLine(data);
+                    }
+                }
+                callback.onComplete();
+            } catch (IOException e) {
+                log.error("SSE stream {} read error: {}", url, e.getMessage());
+                callback.onError(new LlmApiException(LlmApiException.API_ERROR, "SSE 读取中断", e));
+            }
+        }
     }
 
     private Request buildRequest(String url, Map<String, String> headers, String body) {
@@ -194,15 +201,15 @@ public class LlmHttpClient {
     }
 
     private LlmApiException mapException(int status, String responseBody) {
+        log.error("LLM upstream error: status={}, body={}", status, responseBody);
         switch (status) {
             case 401:
             case 403:
-                return new LlmApiException(LlmApiException.AUTH_FAILED, status, "认证失败: " + responseBody);
+                return new LlmApiException(LlmApiException.AUTH_FAILED, status, "AI服务认证失败，请检查API Key配置");
             case 429:
-                return new LlmApiException(LlmApiException.RATE_LIMITED, status, "请求限流: " + responseBody);
+                return new LlmApiException(LlmApiException.RATE_LIMITED, status, "AI服务请求过于频繁，请稍后重试");
             default:
-                return new LlmApiException(LlmApiException.API_ERROR, status,
-                        "API 错误(" + status + "): " + responseBody);
+                return new LlmApiException(LlmApiException.API_ERROR, status, "AI服务暂时不可用，请稍后重试");
         }
     }
 }

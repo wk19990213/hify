@@ -1,11 +1,10 @@
 package com.hify.workflow.dto;
 
+import com.hify.common.dto.BasePageParams;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 @Data
-public class WorkflowListParams {
-    private Integer page = 1;
-    private Integer pageSize = 20;
-    private String name;
-    private Integer status;
+@EqualsAndHashCode(callSuper = true)
+public class WorkflowListParams extends BasePageParams {
 }

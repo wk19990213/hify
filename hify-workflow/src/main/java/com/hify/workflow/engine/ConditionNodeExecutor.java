@@ -2,6 +2,7 @@ package com.hify.workflow.engine;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.util.TemplateVariableResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -35,7 +36,7 @@ public class ConditionNodeExecutor implements NodeExecutor {
             return NodeExecResult.builder().success(false).errorMsg("条件表达式为空").build();
         }
 
-        expression = resolveVariables(expression, ctx.getVariables());
+        expression = TemplateVariableResolver.resolve(expression, ctx.getVariables());
         boolean result = evaluateExpression(expression);
         return NodeExecResult.builder().success(true).output(Map.of("result", result)).build();
     }
@@ -52,21 +53,4 @@ public class ConditionNodeExecutor implements NodeExecutor {
         return "true".equalsIgnoreCase(expr.trim());
     }
 
-    private String resolveVariables(String template, Map<String, Object> variables) {
-        if (variables == null || variables.isEmpty()) return template;
-        String result = template;
-        for (Map.Entry<String, Object> entry : variables.entrySet()) {
-            if (entry.getValue() instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> nested = (Map<String, Object>) entry.getValue();
-                for (Map.Entry<String, Object> ne : nested.entrySet()) {
-                    result = result.replace("{{" + entry.getKey() + "." + ne.getKey() + "}}",
-                            ne.getValue() != null ? ne.getValue().toString() : "");
-                }
-            }
-            result = result.replace("{{" + entry.getKey() + "}}",
-                    entry.getValue() != null ? entry.getValue().toString() : "");
-        }
-        return result;
-    }
 }

@@ -3,7 +3,7 @@ package com.hify.workflow.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
@@ -31,7 +31,6 @@ public class WorkflowServiceImpl implements WorkflowService {
     private final WorkflowInstanceMapper instanceMapper;
     private final NodeExecutionMapper nodeExecutionMapper;
     private final WorkflowEngine workflowEngine;
-    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -63,45 +62,49 @@ public class WorkflowServiceImpl implements WorkflowService {
         workflowMapper.updateById(entity);
 
         if (req.getNodes() != null) {
-            // 加载现有节点，按 ID 排序以保持创建顺序
             List<WorkflowNodeEntity> existingNodes = nodeMapper.selectList(
                     new LambdaQueryWrapper<WorkflowNodeEntity>()
                             .eq(WorkflowNodeEntity::getWorkflowId, id)
                             .eq(WorkflowNodeEntity::getDeleted, 0)
                             .orderByAsc(WorkflowNodeEntity::getId));
-
-            List<Long> nodeIds = new ArrayList<>();
-            for (int i = 0; i < req.getNodes().size(); i++) {
-                WorkflowDto.NodeItem item = req.getNodes().get(i);
-                if (i < existingNodes.size()) {
-                    // 更新已有节点，保留 ID
-                    WorkflowNodeEntity node = existingNodes.get(i);
-                    node.setName(item.getName());
-                    node.setType(item.getType());
-                    node.setConfigJson(item.getConfigJson());
-                    node.setPositionX(item.getPositionX() != null ? item.getPositionX() : 0);
-                    node.setPositionY(item.getPositionY() != null ? item.getPositionY() : 0);
-                    nodeMapper.updateById(node);
-                    nodeIds.add(node.getId());
-                } else {
-                    // 新增节点
-                    nodeIds.add(saveOneNode(id, item));
-                }
-            }
-            // 删除多余的旧节点
-            for (int i = req.getNodes().size(); i < existingNodes.size(); i++) {
-                nodeMapper.deleteById(existingNodes.get(i).getId());
-            }
-
-            // 重建边（边无业务 ID，直接删后重建）
-            edgeMapper.delete(new LambdaQueryWrapper<WorkflowEdgeEntity>()
-                    .eq(WorkflowEdgeEntity::getWorkflowId, id));
-            if (req.getEdges() != null) {
-                saveEdges(id, req.getEdges(), nodeIds);
-            }
+            List<Long> nodeIds = syncNodes(id, existingNodes, req.getNodes());
+            rebuildEdges(id, nodeIds, req.getEdges());
         }
 
         log.info("Workflow updated: id={}, name={}", id, entity.getName());
+    }
+
+    private List<Long> syncNodes(Long workflowId, List<WorkflowNodeEntity> existingNodes,
+                                  List<WorkflowDto.NodeItem> nodeItems) {
+        List<Long> nodeIds = new ArrayList<>();
+        for (int i = 0; i < nodeItems.size(); i++) {
+            WorkflowDto.NodeItem item = nodeItems.get(i);
+            if (i < existingNodes.size()) {
+                WorkflowNodeEntity node = existingNodes.get(i);
+                node.setName(item.getName());
+                node.setType(item.getType());
+                node.setConfigJson(item.getConfigJson());
+                node.setPositionX(item.getPositionX() != null ? item.getPositionX() : 0);
+                node.setPositionY(item.getPositionY() != null ? item.getPositionY() : 0);
+                nodeMapper.updateById(node);
+                nodeIds.add(node.getId());
+            } else {
+                nodeIds.add(saveOneNode(workflowId, item));
+            }
+        }
+        for (int i = nodeItems.size(); i < existingNodes.size(); i++) {
+            nodeMapper.deleteById(existingNodes.get(i).getId());
+        }
+        return nodeIds;
+    }
+
+    private void rebuildEdges(Long workflowId, List<Long> nodeIds,
+                               List<WorkflowDto.EdgeItem> edgeItems) {
+        edgeMapper.delete(new LambdaQueryWrapper<WorkflowEdgeEntity>()
+                .eq(WorkflowEdgeEntity::getWorkflowId, workflowId));
+        if (edgeItems != null) {
+            saveEdges(workflowId, edgeItems, nodeIds);
+        }
     }
 
     @Override
@@ -200,15 +203,7 @@ public class WorkflowServiceImpl implements WorkflowService {
     private List<Long> saveNodes(Long workflowId, List<WorkflowDto.NodeItem> nodeItems) {
         List<Long> nodeIds = new ArrayList<>();
         for (WorkflowDto.NodeItem item : nodeItems) {
-            WorkflowNodeEntity node = new WorkflowNodeEntity();
-            node.setWorkflowId(workflowId);
-            node.setName(item.getName());
-            node.setType(item.getType());
-            node.setConfigJson(item.getConfigJson());
-            node.setPositionX(item.getPositionX() != null ? item.getPositionX() : 0);
-            node.setPositionY(item.getPositionY() != null ? item.getPositionY() : 0);
-            nodeMapper.insert(node);
-            nodeIds.add(node.getId());
+            nodeIds.add(saveOneNode(workflowId, item));
         }
         return nodeIds;
     }

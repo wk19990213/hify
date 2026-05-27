@@ -2,6 +2,7 @@ package com.hify.workflow.engine;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hify.common.util.TemplateVariableResolver;
 import com.hify.knowledge.dto.RagResp;
 import com.hify.knowledge.service.KnowledgeService;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +41,7 @@ public class RagNodeExecutor implements NodeExecutor {
             return NodeExecResult.builder().success(false).errorMsg("RAG 节点缺少知识库配置或查询语句").build();
         }
 
-        query = resolveVariables(query, ctx.getVariables());
+        query = TemplateVariableResolver.resolve(query, ctx.getVariables());
 
         try {
             RagResp ragResp = knowledgeService.query(kbId, query);
@@ -53,21 +54,4 @@ public class RagNodeExecutor implements NodeExecutor {
         }
     }
 
-    private String resolveVariables(String template, Map<String, Object> variables) {
-        if (variables == null || variables.isEmpty()) return template;
-        String result = template;
-        for (Map.Entry<String, Object> entry : variables.entrySet()) {
-            if (entry.getValue() instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> nested = (Map<String, Object>) entry.getValue();
-                for (Map.Entry<String, Object> ne : nested.entrySet()) {
-                    result = result.replace("{{" + entry.getKey() + "." + ne.getKey() + "}}",
-                            ne.getValue() != null ? ne.getValue().toString() : "");
-                }
-            }
-            result = result.replace("{{" + entry.getKey() + "}}",
-                    entry.getValue() != null ? entry.getValue().toString() : "");
-        }
-        return result;
-    }
 }

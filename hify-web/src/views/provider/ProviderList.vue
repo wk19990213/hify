@@ -28,25 +28,11 @@
       </template>
 
       <template #health="{ row }">
-        <div class="health-cell">
-          <template v-if="row.health">
-            <el-tag :type="healthTagType(row.health.status)" size="small">
-              {{ healthLabel(row.health.status) }}
-            </el-tag>
-            <span v-if="row.health.avgLatencyMs" class="health-latency" :title="`${row.health.avgLatencyMs}ms`">
-              {{ row.health.avgLatencyMs }}ms
-            </span>
-          </template>
-          <el-tag v-else type="info" size="small">未知</el-tag>
-        </div>
+        <HealthStatusCell :health="row.health" />
       </template>
 
       <template #modelCount="{ row }">
         {{ row.modelCount }}
-      </template>
-
-      <template #createdAt="{ row }">
-        {{ formatDateTime(row.createdAt) }}
       </template>
 
       <template #action="{ row }">
@@ -87,7 +73,7 @@
           <el-input
             v-model="form._apiKey"
             type="password"
-            placeholder="请输入 API Key"
+            :placeholder="form._apiKey ? '****（已设置，留空不修改）' : '请输入 API Key'"
             show-password
             clearable
           />
@@ -102,9 +88,10 @@ import { ref } from 'vue'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
+import HealthStatusCell from '@/components/HealthStatusCell.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
-import { formatDateTime } from '@/utils/date'
+
 import {
   getProviderList,
   createProvider,
@@ -133,18 +120,6 @@ const typeLabelMap: Record<string, string> = {
 const typeTagType = (t: string) => typeMap[t] || 'info'
 const typeLabel = (t: string) => typeLabelMap[t] || t
 
-// ── 健康状态映射 ──────────────────────────────────────
-
-const healthStatusMap: Record<string, { label: string; type: string }> = {
-  HEALTHY: { label: '正常', type: 'success' },
-  UNHEALTHY: { label: '故障', type: 'danger' },
-  DEGRADED: { label: '降级', type: 'warning' },
-  UNKNOWN: { label: '未知', type: 'info' },
-}
-
-const healthTagType = (status?: string) => healthStatusMap[status || 'UNKNOWN']?.type || 'info'
-const healthLabel = (status?: string) => healthStatusMap[status || 'UNKNOWN']?.label || '未知'
-
 // ── 表格列 ──────────────────────────────────────────
 
 const columns: TableColumn<Provider>[] = [
@@ -154,7 +129,7 @@ const columns: TableColumn<Provider>[] = [
   { prop: 'health', label: '健康状态', width: 140, slot: 'health' },
   { prop: 'modelCount', label: '模型数', width: 80, slot: 'modelCount', align: 'center' },
   { prop: 'status', label: '状态', width: 80, slot: 'status', align: 'center' },
-  { prop: 'createdAt', label: '创建时间', width: 170, slot: 'createdAt' },
+  { prop: 'createdAt', label: '创建时间', width: 170, type: 'datetime' },
   { prop: 'action', label: '操作', width: 200, slot: 'action', fixed: 'right', align: 'center' },
 ]
 
@@ -308,21 +283,8 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
   white-space: nowrap;
 }
 
-.health-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
 
-.health-latency {
-  font-size: 12px;
-  color: var(--text-secondary);
-  max-width: 70px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+
 
 @media (max-width: 768px) {
   .page-header {

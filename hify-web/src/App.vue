@@ -42,6 +42,24 @@
 
       <!-- 底部区域 -->
       <div class="sidebar-footer">
+        <!-- 用户区域 -->
+        <div v-if="isLoggedIn" class="user-area" :class="{ collapsed: isCollapsed }">
+          <div class="user-info" v-show="!isCollapsed">
+            <el-icon :size="16"><UserFilled /></el-icon>
+            <span class="user-name">{{ user?.username }}</span>
+          </div>
+          <el-button link class="logout-btn" @click="logout" :title="isCollapsed ? '退出登录' : ''">
+            <el-icon :size="16"><SwitchButton /></el-icon>
+            <span v-show="!isCollapsed">退出</span>
+          </el-button>
+        </div>
+        <div v-else class="user-area" :class="{ collapsed: isCollapsed }">
+          <button class="login-btn" @click="authDialog?.open('login')">
+            <el-icon :size="16"><User /></el-icon>
+            <span v-show="!isCollapsed">登录 / 注册</span>
+          </button>
+        </div>
+
         <!-- 折叠按钮 -->
         <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开' : '收起'">
           <el-icon :size="16">
@@ -63,11 +81,14 @@
     <main class="main" :class="{ 'main-expanded': isCollapsed }">
       <router-view />
     </main>
+
+    <!-- 登录/注册弹窗 -->
+    <AuthDialog ref="authDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Setting,
@@ -77,17 +98,30 @@ import {
   Share,
   Fold,
   Expand,
-  Tools
+  Tools,
+  UserFilled,
+  SwitchButton,
 } from '@element-plus/icons-vue'
+import { useAuth } from '@/composables/useAuth'
+import AuthDialog from '@/components/AuthDialog.vue'
 
 const route = useRoute()
 const activeMenu = computed(() => route.path)
+const { isLoggedIn, user, logout } = useAuth()
+const authDialog = ref<InstanceType<typeof AuthDialog> | null>(null)
 
 // 折叠状态
 const isCollapsed = ref(false)
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
+
+// 监听全局 401 → 弹出登录框
+function onAuthRequired() {
+  authDialog.value?.open('login')
+}
+onMounted(() => window.addEventListener('auth:required', onAuthRequired))
+onUnmounted(() => window.removeEventListener('auth:required', onAuthRequired))
 
 const menuItems = [
   { path: '/provider', label: '模型管理', icon: Setting },
@@ -271,7 +305,71 @@ const menuItems = [
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* 用户区域 */
+.user-area {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.user-area.collapsed {
+  justify-content: center;
+  padding: 10px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.user-name {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-btn {
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.logout-btn:hover {
+  color: rgba(255, 100, 100, 0.8) !important;
+}
+
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-btn:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.15));
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #fff;
 }
 
 /* 折叠按钮 */

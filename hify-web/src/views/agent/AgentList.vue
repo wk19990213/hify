@@ -36,10 +36,6 @@
         {{ row.temperature !== null && row.temperature !== undefined ? row.temperature : '-' }}
       </template>
 
-      <template #createdAt="{ row }">
-        {{ formatDateTime(row.createdAt) }}
-      </template>
-
       <template #action="{ row }">
         <div class="action-btns">
           <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -166,7 +162,7 @@ import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import HifyFormDialog from '@/components/HifyFormDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
-import { formatDateTime } from '@/utils/date'
+
 import { get } from '@/utils/request'
 import {
   getAgentList,
@@ -187,7 +183,7 @@ const columns: TableColumn<Agent>[] = [
   { prop: 'modelConfigName', label: '模型配置', width: 150, slot: 'modelConfigName' },
   { prop: 'toolCount', label: '工具数', width: 80, slot: 'toolCount', align: 'center' },
   { prop: 'temperature', label: '温度', width: 80, slot: 'temperature', align: 'center' },
-  { prop: 'createdAt', label: '创建时间', width: 170, slot: 'createdAt' },
+  { prop: 'createdAt', label: '创建时间', width: 170, type: 'datetime' },
   { prop: 'action', label: '操作', width: 200, slot: 'action', fixed: 'right', align: 'center' },
 ]
 

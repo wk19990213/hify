@@ -151,7 +151,9 @@ const handleNewChat = () => {
 
 const renderMarkdown = (text: string) => {
   const rawHtml = md.render(text)
-  return DOMPurify.sanitize(rawHtml)
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i
+  })
 }
 
 const handleScroll = () => {
@@ -165,45 +167,52 @@ const scrollToBottom = (force = false) => {
   nextTick(() => { if (messagesContainer.value) messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight })
 }
 
+// ── SSE 流解析 ──
+async function readSseStream(reader: ReadableStreamDefaultReader<Uint8Array>, onData: (text: string) => void) {
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const result = await reader.read()
+    if (result.done) break
+    buffer += decoder.decode(result.value, { stream: true })
+    const lines = buffer.split('\n'); buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue
+      const data = line.substring(5).trim()
+      if (data === '[DONE]') return
+      if (!data) continue
+      onData(data)
+    }
+  }
+  if (buffer.startsWith('data:')) {
+    const data = buffer.substring(5).trim()
+    if (data && data !== '[DONE]') onData(data)
+  }
+}
+
 // ── 发送消息 ──
 const handleSend = async () => {
   const text = inputText.value.trim()
   if (!text || loading.value || !sessionId.value) return
   inputText.value = ''; loading.value = true; userScrolledUp.value = false
   messages.value.push({ id: 0, role: 'user', content: text, tokenCount: 0, createdAt: '' })
-  messages.value.push({ id: 0, role: 'assistant', content: '', tokenCount: 0, createdAt: '', loading: true })
+  appendAssistantMessage()
   scrollToBottom(true)
   abortController = new AbortController()
 
   try {
+    const token = localStorage.getItem('hify_token')
     const response = await fetch(`/api/v1/chat/sessions/${sessionId.value}/stream`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ content: text }), signal: abortController.signal
     })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No reader')
-    const decoder = new TextDecoder()
     const lastMsg = messages.value[messages.value.length - 1]
-    let buffer = '', done = false
-    while (!done) {
-      const result = await reader.read()
-      if (result.done) break
-      buffer += decoder.decode(result.value, { stream: true })
-      const lines = buffer.split('\n'); buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue
-        const data = line.substring(5).trim()
-        if (data === '[DONE]') { done = true; break }
-        if (!data) continue
-        lastMsg.content += data; scrollToBottom()
-      }
-    }
-    if (buffer.startsWith('data:')) {
-      const data = buffer.substring(5).trim()
-      if (data && data !== '[DONE]') lastMsg.content += data
-    }
+    await readSseStream(reader, (data) => { lastMsg.content += data; scrollToBottom() })
     lastMsg.loading = false
-    // 刷新会话列表以更新标题和时间
     currentTitle.value = text.substring(0, 20)
     loadSessions()
   } catch (err: any) {
@@ -211,6 +220,10 @@ const handleSend = async () => {
     if (err?.name === 'AbortError') { if (!lastMsg.content) lastMsg.content = '(已终止)' }
     else { lastMsg.isError = true; if (!lastMsg.content) lastMsg.content = '连接失败，请重试' }
   } finally { loading.value = false; abortController = null; scrollToBottom(true) }
+}
+
+function appendAssistantMessage() {
+  messages.value.push({ id: 0, role: 'assistant', content: '', tokenCount: 0, createdAt: '', loading: true })
 }
 
 const handleStop = () => { abortController?.abort(); loading.value = false }

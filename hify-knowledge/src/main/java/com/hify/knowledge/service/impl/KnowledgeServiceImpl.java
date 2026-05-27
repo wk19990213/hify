@@ -2,7 +2,6 @@ package com.hify.knowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hify.common.crypto.AesEncryptor;
 import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
@@ -15,10 +14,11 @@ import com.hify.knowledge.service.*;
 import com.hify.provider.adapter.*;
 import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.entity.ProviderEntity;
-import com.hify.provider.entity.ProviderModelEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderMapper;
 import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.provider.service.ProviderDiscoveryService;
+import com.hify.provider.util.AuthConfigHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -51,6 +51,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final ProviderMapper providerMapper;
     private final ModelConfigMapper modelConfigMapper;
     private final ProviderModelMapper providerModelMapper;
+    private final ProviderDiscoveryService providerDiscoveryService;
     private final ProviderAdapterFactory adapterFactory;
     private final ObjectMapper objectMapper;
 
@@ -152,40 +153,22 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (sources.isEmpty())
             throw BizException.paramError("知识库中没有找到相关文档");
 
-        String prompt = String.format(
-                "你是一个知识库助手。请根据以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知。\n\n参考资料：\n%s\n\n用户问题：%s\n\n回答：",
-                context, question);
+        String prompt = buildRagPrompt(context.toString(), question);
 
-        // 查找有可用提供商的模型配置
         Page<ModelConfigEntity> mcPage = modelConfigMapper.selectPage(
                 Page.of(1, 1),
                 new LambdaQueryWrapper<ModelConfigEntity>()
                         .eq(ModelConfigEntity::getStatus, 1)
                         .eq(ModelConfigEntity::getDeleted, 0)
                         .gt(ModelConfigEntity::getProviderCount, 0));
-        ProviderEntity provider = null;
         ModelConfigEntity modelConfig = mcPage.getRecords().isEmpty() ? null : mcPage.getRecords().get(0);
-        if (modelConfig != null) {
-            // 通过 provider_model 查找可用 Provider
-            List<ProviderModelEntity> pmList = providerModelMapper.selectList(
-                    new LambdaQueryWrapper<ProviderModelEntity>()
-                            .eq(ProviderModelEntity::getModelId, modelConfig.getModelId()));
-            for (ProviderModelEntity pm : pmList) {
-                ProviderEntity p = providerMapper.selectById(pm.getProviderId());
-                if (p != null && p.getDeleted() == 0 && p.getStatus() == 1) {
-                    provider = p;
-                    break;
-                }
-            }
-        }
+        ProviderEntity provider = modelConfig != null
+                ? providerDiscoveryService.findAvailableProviderByModelId(modelConfig.getModelId()) : null;
         if (provider == null) throw BizException.paramError("没有可用的 LLM Provider");
 
         ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
-        Map<String, Object> authConfig = null;
-        try {
-            String authJson = AesEncryptor.decrypt(provider.getAuthConfig());
-            authConfig = objectMapper.readValue(authJson, Map.class);
-        } catch (Exception ignored) {}
+        Map<String, Object> authConfig = AuthConfigHelper.decryptAuthConfig(provider.getAuthConfig());
+        if (authConfig.isEmpty()) authConfig = null;
 
         String llmResp = adapter.chat(provider.getBaseUrl(), authConfig,
                 new ChatRequest(modelConfig.getModelId(),
@@ -197,6 +180,12 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         resp.setTokenCount(adapter.extractTokenCount(llmResp));
         resp.setLatencyMs((int) (System.currentTimeMillis() - start));
         return resp;
+    }
+
+    private String buildRagPrompt(String context, String question) {
+        return String.format(
+                "你是一个知识库助手。请根据以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知。\n\n参考资料：\n%s\n\n用户问题：%s\n\n回答：",
+                context, question);
     }
 
     private String parseDocument(MultipartFile file, String fileType) {
@@ -272,7 +261,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     /**
-     * 验证上传文件的安全性
+     * 验证上传文件的安全性。
+     * 防护措施完备：文件大小限制(50MB)、类型白名单(pdf/docx/txt/md)、
+     * 路径穿越检查(..\\/)、魔数验证(防伪造扩展名)。
+     * 新增文件类型时需同步更新 ALLOWED_FILE_TYPES 和魔数验证逻辑。
      */
     private void validateUploadFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {

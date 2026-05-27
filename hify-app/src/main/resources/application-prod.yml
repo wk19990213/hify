@@ -1,0 +1,14 @@
+# Hify 生产环境配置
+# 启用方式: java -jar hify-app.jar --spring.profiles.active=prod
+
+# URL 安全校验 — 生产环境禁用 localhost HTTP 连接
+security:
+  url-validator:
+    allow-localhost-http: false
+
+# 日志级别 — 生产环境减少日志输出
+logging:
+  level:
+    root: WARN
+    com.hify: INFO
+    com.hify.common.http: WARN
