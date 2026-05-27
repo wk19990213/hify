@@ -1,10 +1,7 @@
 package com.hify.chat.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hify.agent.dto.AgentResponse;
 import com.hify.agent.dto.AgentToolResponse;
 import com.hify.agent.service.AgentService;
 import com.hify.chat.dto.AgentContext;
@@ -16,13 +13,11 @@ import com.hify.chat.entity.ChatSessionEntity;
 import com.hify.chat.mapper.ChatMessageMapper;
 import com.hify.chat.service.AgentContextResolver;
 import com.hify.chat.service.ChatService;
+import com.hify.chat.service.MessageBuilder;
 import com.hify.chat.service.SessionManager;
 import com.hify.common.exception.BizException;
 import com.hify.common.http.StreamCallback;
 import com.hify.common.resilience.CircuitBreakerService;
-import com.hify.common.util.LogSanitizer;
-import com.hify.knowledge.dto.RagResp;
-import com.hify.knowledge.service.KnowledgeService;
 import com.hify.mcp.mcp.McpClientManager;
 import com.hify.mcp.mcp.ToolDef;
 import com.hify.provider.adapter.ProviderAdapter;
@@ -56,7 +51,6 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
 
-    private static final int MAX_ROUNDS = 20;
     private static final long SSE_TIMEOUT_MS = 120_000L;
 
     private final SessionManager sessionManager;
@@ -64,10 +58,10 @@ public class ChatServiceImpl implements ChatService {
     private final ChatMessageMapper messageMapper;
     private final AgentService agentService;
     private final CircuitBreakerService circuitBreakerService;
-    private final KnowledgeService knowledgeService;
     private final WorkflowService workflowService;
     private final McpClientManager mcpClientManager;
     private final ToolCallHandler toolCallHandler;
+    private final MessageBuilder messageBuilder;
     private final ObjectMapper objectMapper;
 
     private final ThreadPoolExecutor workflowExecutor = new ThreadPoolExecutor(
@@ -133,7 +127,7 @@ public class ChatServiceImpl implements ChatService {
                 sessionId, session, ctx, req.getContent());
         if (wfResult.isPresent()) return wfResult.get();
 
-        List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent(), req.getContent());
+        List<Map<String, Object>> messages = messageBuilder.buildMessages(sessionId, ctx.agent(), req.getContent());
 
         // 保存用户消息
         ChatMessageEntity userMsg = saveUserMessage(sessionId, session, req.getContent());
@@ -199,7 +193,7 @@ public class ChatServiceImpl implements ChatService {
             return handleWorkflowStream(sessionId, session, ctx, req);
         }
 
-        List<Map<String, Object>> messages = buildMessages(sessionId, ctx.agent(), req.getContent());
+        List<Map<String, Object>> messages = messageBuilder.buildMessages(sessionId, ctx.agent(), req.getContent());
 
         // 保存用户消息（事务内，SseEmitter 之前）
         saveUserMessage(sessionId, session, req.getContent());
@@ -350,62 +344,6 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public List<ChatMessageResp> getHistory(Long sessionId) {
         return sessionManager.getHistory(sessionId);
-    }
-
-    // ==================== 内部：消息构建 ====================
-
-    /** 构造消息列表：system prompt + 历史 + 当前用户消息 */
-    private List<Map<String, Object>> buildMessages(Long sessionId, AgentResponse agent, String userContent) {
-        List<Map<String, Object>> messages = new ArrayList<>();
-
-        // 系统提示词
-        String systemPrompt = agent.getSystemPrompt();
-        if (systemPrompt == null || systemPrompt.isBlank()) {
-            systemPrompt = "你是一个有用的AI助手。";
-        }
-
-        // RAG 检索增强
-        systemPrompt = enrichPromptWithRag(agent, userContent, systemPrompt);
-
-        messages.add(Map.<String, Object>of("role", "system", "content", systemPrompt));
-
-        // 历史消息（受 maxRounds 限制）- 使用分页查询避免 SQL 注入
-        int maxRounds = agent.getConversationMaxRounds() != null ? agent.getConversationMaxRounds() : MAX_ROUNDS;
-        int historyLimit = maxRounds * 2;
-        Page<ChatMessageEntity> page = Page.of(1, historyLimit);
-        LambdaQueryWrapper<ChatMessageEntity> wrapper = new LambdaQueryWrapper<ChatMessageEntity>()
-                .eq(ChatMessageEntity::getSessionId, sessionId)
-                .eq(ChatMessageEntity::getDeleted, 0)
-                .orderByDesc(ChatMessageEntity::getCreatedAt);
-        Page<ChatMessageEntity> resultPage = messageMapper.selectPage(page, wrapper);
-        List<ChatMessageEntity> history = resultPage.getRecords();
-        for (int i = history.size() - 1; i >= 0; i--) {
-            ChatMessageEntity msg = history.get(i);
-            messages.add(Map.<String, Object>of("role", msg.getRole(), "content", msg.getContent() != null ? msg.getContent() : ""));
-        }
-
-        messages.add(Map.<String, Object>of("role", "user", "content", userContent));
-        return messages;
-    }
-
-    /**
-     * RAG 知识库检索增强系统提示词
-     */
-    private String enrichPromptWithRag(AgentResponse agent, String userContent, String systemPrompt) {
-        if (agent.getKbId() == null) {
-            return systemPrompt;
-        }
-        try {
-            RagResp rag = knowledgeService.query(agent.getKbId(), userContent);
-            if (rag.getSources() != null && !rag.getSources().isEmpty()) {
-                String ctx = String.join("\n\n", rag.getSources());
-                return systemPrompt + "\n\n请根据以下参考资料回答用户问题：\n" + ctx;
-            }
-        } catch (Exception e) {
-            log.warn("RAG query failed for agent {} kb {}: {}",
-                    agent.getId(), agent.getKbId(), LogSanitizer.sanitize(e.getMessage()));
-        }
-        return systemPrompt;
     }
 
     // ==================== 内部：辅助方法 ====================
