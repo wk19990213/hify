@@ -10,31 +10,17 @@
       </div>
     </div>
 
-    <HifyTable
-      ref="tableRef"
-      :columns="columns"
-      :api="fetchList"
-      :show-pagination="true"
-      empty-text="暂无提供商数据"
-    >
+    <HifyTable ref="tableRef" :columns="columns" :api="fetchList" :show-pagination="true" empty-text="暂无提供商数据">
       <template #type="{ row }">
         <el-tag :type="typeTagType(row.type)" size="small">{{ typeLabel(row.type) }}</el-tag>
       </template>
-
       <template #status="{ row }">
         <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="light">
           {{ row.status === 1 ? '启用' : '禁用' }}
         </el-tag>
       </template>
-
-      <template #health="{ row }">
-        <HealthStatusCell :health="row.health" />
-      </template>
-
-      <template #modelCount="{ row }">
-        {{ row.modelCount }}
-      </template>
-
+      <template #health="{ row }"><HealthStatusCell :health="row.health" /></template>
+      <template #modelCount="{ row }">{{ row.modelCount }}</template>
       <template #action="{ row }">
         <div class="action-btns">
           <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -44,42 +30,7 @@
       </template>
     </HifyTable>
 
-    <HifyFormDialog
-      ref="dialogRef"
-      :title="dialogTitle"
-      width="560px"
-      :rules="formRules"
-      @submit="handleSubmit"
-    >
-      <template #default="{ form }">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入提供商名称" clearable />
-        </el-form-item>
-
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
-            <el-option label="OpenAI" value="OPENAI" />
-            <el-option label="Anthropic" value="ANTHROPIC" />
-            <el-option label="Ollama" value="OLLAMA" />
-            <el-option label="OpenAI Compatible" value="OPENAI_COMPATIBLE" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="Base URL" prop="baseUrl">
-          <el-input v-model="form.baseUrl" placeholder="https://api.example.com/v1" clearable />
-        </el-form-item>
-
-        <el-form-item label="API Key">
-          <el-input
-            v-model="form._apiKey"
-            type="password"
-            :placeholder="form._apiKey ? '****（已设置，留空不修改）' : '请输入 API Key'"
-            show-password
-            clearable
-          />
-        </el-form-item>
-      </template>
-    </HifyFormDialog>
+    <ProviderFormDialog ref="dialogRef" @submit="handleSubmit" />
   </div>
 </template>
 
@@ -87,40 +38,18 @@
 import { ref } from 'vue'
 import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
-import HifyFormDialog from '@/components/HifyFormDialog.vue'
+import ProviderFormDialog from './ProviderFormDialog.vue'
 import HealthStatusCell from '@/components/HealthStatusCell.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { notifySuccess, notifyError } from '@/utils/notify'
-
-import {
-  getProviderList,
-  createProvider,
-  updateProvider,
-  deleteProvider,
-  testConnection,
-} from '@/api/provider'
+import { getProviderList, createProvider, updateProvider, deleteProvider, testConnection } from '@/api/provider'
 import type { Provider, ProviderRequest } from '@/api/provider'
 
-// ── 类型标签映射 ──────────────────────────────────────
-
-const typeMap: Record<string, string> = {
-  OPENAI: '',
-  ANTHROPIC: 'warning',
-  OLLAMA: 'info',
-  OPENAI_COMPATIBLE: '',
-}
-
-const typeLabelMap: Record<string, string> = {
-  OPENAI: 'OpenAI',
-  ANTHROPIC: 'Anthropic',
-  OLLAMA: 'Ollama',
-  OPENAI_COMPATIBLE: 'Compatible',
-}
-
+// 类型标签映射
+const typeMap: Record<string, string> = { OPENAI: '', ANTHROPIC: 'warning', OLLAMA: 'info', OPENAI_COMPATIBLE: '' }
+const typeLabelMap: Record<string, string> = { OPENAI: 'OpenAI', ANTHROPIC: 'Anthropic', OLLAMA: 'Ollama', OPENAI_COMPATIBLE: 'Compatible' }
 const typeTagType = (t: string) => typeMap[t] || 'info'
 const typeLabel = (t: string) => typeLabelMap[t] || t
-
-// ── 表格列 ──────────────────────────────────────────
 
 const columns: TableColumn<Provider>[] = [
   { prop: 'name', label: '名称', minWidth: 160 },
@@ -133,170 +62,66 @@ const columns: TableColumn<Provider>[] = [
   { prop: 'action', label: '操作', width: 200, slot: 'action', fixed: 'right', align: 'center' },
 ]
 
-// ── 表单校验规则 ─────────────────────────────────────
-
-const formRules = {
-  name: [
-    { required: true, message: '请输入提供商名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度 2 ~ 50 个字符', trigger: 'blur' },
-  ],
-  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  baseUrl: [{ required: true, message: '请输入 Base URL', trigger: 'blur' }],
-}
-
 const fetchList = (params: any) => getProviderList(params)
-
-// ── 引用 ────────────────────────────────────────────
-
 const tableRef = ref<any>(null)
 const dialogRef = ref<any>(null)
 const { confirmDelete } = useConfirm()
 
-const dialogTitle = ref('新增提供商')
+// 新增
+const handleAdd = () => { dialogRef.value?.open() }
 
-// ── 新增 ────────────────────────────────────────────
-
-const handleAdd = () => {
-  dialogTitle.value = '新增提供商'
-  dialogRef.value?.open()
-}
-
-// ── 编辑 ────────────────────────────────────────────
-
+// 编辑
 const handleEdit = (row: Provider) => {
-  dialogTitle.value = '编辑提供商'
-  // 从 authConfig 中提取 apiKey 供表单展示
-  const apiKey = row.authConfig?.apiKey || ''
-  dialogRef.value?.open({ ...row, _apiKey: apiKey })
+  dialogRef.value?.open({ ...row, _apiKey: row.authConfig?.apiKey || '' })
 }
 
-// ── 删除 ────────────────────────────────────────────
-
+// 删除
 const handleDelete = async (row: Provider) => {
   try {
-    await confirmDelete(
-      `确定要删除提供商 "${row.name}" 吗？`,
-      () => deleteProvider(row.id),
-      { title: '删除提供商', successMessage: '删除成功' }
-    )
+    await confirmDelete(`确定要删除提供商 "${row.name}" 吗？`, () => deleteProvider(row.id),
+      { title: '删除提供商', successMessage: '删除成功' })
     tableRef.value?.refresh(true)
-  } catch {
-    // 取消或失败
-  }
+  } catch { /* 取消或失败 */ }
 }
 
-// ── 连通性测试 ───────────────────────────────────────
-
+// 连通性测试
 const handleTestConnection = async (row: Provider) => {
   try {
     const result = await testConnection(row.id)
-    if (result.success) {
-      notifySuccess(`连接成功，延迟 ${result.latencyMs}ms，${result.modelCount} 个模型可用`)
-    } else {
-      notifyError('连接失败', result.errorMessage || '未知错误')
-    }
+    if (result.success) { notifySuccess(`连接成功，延迟 ${result.latencyMs}ms，${result.modelCount} 个模型可用`) }
+    else { notifyError('连接失败', result.errorMessage || '未知错误') }
     tableRef.value?.refresh()
-  } catch {
-    notifyError('测试失败', '请稍后重试')
-  }
+  } catch { notifyError('测试失败', '请稍后重试') }
 }
 
-// ── 提交表单 ────────────────────────────────────────
-
+// 提交表单
 const handleSubmit = async (formData: any, isEdit: boolean) => {
   try {
     dialogRef.value?.setLoading(true)
-
-    // 从 _apiKey 构造 authConfig
     const { _apiKey, ...rest } = formData
-    const req: ProviderRequest = {
-      ...rest,
-      ...(_apiKey ? { authConfig: { apiKey: _apiKey } } : {}),
-    }
-
-    if (isEdit) {
-      await updateProvider(formData.id, req)
-    } else {
-      await createProvider(req)
-    }
-
+    const req: ProviderRequest = { ...rest, ...(_apiKey ? { authConfig: { apiKey: _apiKey } } : {}) }
+    if (isEdit) { await updateProvider(formData.id, req) }
+    else { await createProvider(req) }
     notifySuccess(isEdit ? '编辑成功' : '新增成功')
     dialogRef.value?.close()
     tableRef.value?.refresh(true)
-  } catch {
-    notifyError('操作失败', '请稍后重试')
-  } finally {
-    dialogRef.value?.setLoading(false)
-  }
+  } catch { notifyError('操作失败', '请稍后重试') }
+  finally { dialogRef.value?.setLoading(false) }
 }
-
-// ── 工具函数 ────────────────────────────────────────
-
-
 </script>
 
 <style scoped>
-.provider-list-page {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.header-left {
-  flex: 1;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 8px 0;
-}
-
-.page-desc {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.header-right {
-  flex-shrink: 0;
-}
-
-.action-btns {
-  display: flex;
-  gap: 4px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.action-btns :deep(.el-button) {
-  white-space: nowrap;
-}
-
-
-
+.provider-list-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border-light); }
+.header-left { flex: 1; }
+.page-title { font-size: 24px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px 0; }
+.page-desc { font-size: 14px; color: var(--text-secondary); margin: 0; }
+.header-right { flex-shrink: 0; }
+.action-btns { display: flex; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
 
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-  .header-right {
-    width: 100%;
-  }
-  .header-right :deep(.el-button) {
-    width: 100%;
-  }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .header-right { width: 100%; }
+  .header-right :deep(.el-button) { width: 100%; }
 }
 </style>
