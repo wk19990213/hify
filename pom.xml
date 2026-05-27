@@ -125,6 +125,13 @@
                 <version>${resilience4j.version}</version>
             </dependency>
 
+            <!-- Spring Security -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-security</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
             <!-- Logstash Logback Encoder -->
             <dependency>
                 <groupId>net.logstash.logback</groupId>

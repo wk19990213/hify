@@ -117,6 +117,12 @@ embedding:
   url: ${EMBEDDING_URL:https://api.siliconflow.cn/v1/embeddings}
   key: ${EMBEDDING_KEY:}
 
+# JWT 认证配置
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: ${JWT_EXPIRATION:86400000}
+  # 默认 24 小时（毫秒）
+
 # 日志配置由 logback-spring.xml 统一管理
 logging:
   level:
