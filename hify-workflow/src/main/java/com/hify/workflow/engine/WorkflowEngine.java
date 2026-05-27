@@ -27,7 +27,7 @@ public class WorkflowEngine {
     private final ObjectMapper objectMapper;
     private final List<NodeExecutor> executors;
 
-    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, Long sessionId, String triggerType, Long modelConfigId, List<ToolDef> tools) {
+    public WorkflowInstanceEntity execute(Long workflowId, Map<String, Object> input, ExecutionState execState) {
         // 1. 加载工作流定义
         WorkflowEntity workflow = workflowMapper.selectById(workflowId);
         if (workflow == null || workflow.getDeleted() == 1) {
@@ -52,14 +52,26 @@ public class WorkflowEngine {
 
         DagGraph dag = buildDagGraph(nodes, edges);
         Long startNodeId = findStartNode(dag.inDegree);
-        WorkflowInstanceEntity instance = createInstance(workflowId, sessionId, triggerType, input);
+        WorkflowInstanceEntity instance = createInstance(workflowId, execState.getSessionId(),
+                execState.getTriggerType(), input);
 
         // 5. 执行 DAG
         Map<String, Object> variables = new HashMap<>();
         variables.put("input", input);
 
+        ExecutionState state = ExecutionState.builder()
+                .nodeMap(dag.nodeMap)
+                .outEdges(dag.outEdges)
+                .variables(variables)
+                .instanceId(instance.getId())
+                .modelConfigId(execState.getModelConfigId())
+                .tools(execState.getTools())
+                .sessionId(execState.getSessionId())
+                .triggerType(execState.getTriggerType())
+                .build();
+
         try {
-            Object lastOutput = executeNode(startNodeId, dag.nodeMap, dag.outEdges, variables, instance.getId(), modelConfigId, tools);
+            Object lastOutput = executeNode(startNodeId, state);
             instance.setStatus("success");
             try {
                 instance.setOutputJson(objectMapper.writeValueAsString(lastOutput));
@@ -77,14 +89,11 @@ public class WorkflowEngine {
         return instance;
     }
 
-    private Object executeNode(Long nodeId, Map<Long, WorkflowNodeEntity> nodeMap,
-                               Map<Long, List<WorkflowEdgeEntity>> outEdges,
-                               Map<String, Object> variables, Long instanceId, Long modelConfigId,
-                               List<ToolDef> tools) {
-        WorkflowNodeEntity node = nodeMap.get(nodeId);
+    private Object executeNode(Long nodeId, ExecutionState state) {
+        WorkflowNodeEntity node = state.getNodeMap().get(nodeId);
         if (node == null) return null;
 
-        NodeExecutionEntity exec = prepareNodeExecution(nodeId, instanceId, variables);
+        NodeExecutionEntity exec = prepareNodeExecution(nodeId, state);
 
         // 获取执行器
         NodeExecutor executor = findExecutor(node.getType());
@@ -96,29 +105,27 @@ public class WorkflowEngine {
             throw new RuntimeException("未知节点类型: " + node.getType());
         }
 
-        NodeExecResult result = executeWithRetry(executor, node, nodeId, variables,
-                modelConfigId, tools, exec);
+        NodeExecResult result = executeWithRetry(executor, node, nodeId, exec, state);
 
         if (!result.isSuccess()) {
-            return handleErrorRouting(node, nodeId, nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+            return handleErrorRouting(nodeId, state);
         }
 
-        String varKey = generateVarKey(node.getName(), variables);
-        variables.put(varKey, result.getOutput());
-        variables.put(String.valueOf(nodeId), result.getOutput());
+        String varKey = generateVarKey(node.getName(), state.getVariables());
+        state.getVariables().put(varKey, result.getOutput());
+        state.getVariables().put(String.valueOf(nodeId), result.getOutput());
 
-        return handleNextRouting(node, nodeId, result, nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+        return handleNextRouting(nodeId, result, state);
     }
 
     /** 带重试执行节点并更新执行记录 */
     private NodeExecResult executeWithRetry(NodeExecutor executor, WorkflowNodeEntity node,
-            Long nodeId, Map<String, Object> variables, Long modelConfigId,
-            List<ToolDef> tools, NodeExecutionEntity exec) {
+            Long nodeId, NodeExecutionEntity exec, ExecutionState state) {
         NodeExecContext ctx = new NodeExecContext();
         ctx.setNode(node);
-        ctx.setVariables(variables);
-        ctx.setModelConfigId(modelConfigId);
-        ctx.setTools(tools);
+        ctx.setVariables(state.getVariables());
+        ctx.setModelConfigId(state.getModelConfigId());
+        ctx.setTools(state.getTools());
 
         int maxRetries = getMaxRetries(node);
         NodeExecResult result = null;
@@ -142,16 +149,15 @@ public class WorkflowEngine {
         return result;
     }
 
-    private NodeExecutionEntity prepareNodeExecution(Long nodeId, Long instanceId,
-                                                       Map<String, Object> variables) {
+    private NodeExecutionEntity prepareNodeExecution(Long nodeId, ExecutionState state) {
         NodeExecutionEntity exec = new NodeExecutionEntity();
-        exec.setInstanceId(instanceId);
+        exec.setInstanceId(state.getInstanceId());
         exec.setNodeId(nodeId);
         exec.setStatus("running");
         exec.setRetryCount(0);
         exec.setStartedAt(LocalDateTime.now());
         try {
-            exec.setInputJson(objectMapper.writeValueAsString(variables));
+            exec.setInputJson(objectMapper.writeValueAsString(state.getVariables()));
         } catch (Exception ignored) {}
         nodeExecutionMapper.insert(exec);
         return exec;
@@ -228,21 +234,20 @@ public class WorkflowEngine {
         return instance;
     }
 
-    private Object handleErrorRouting(WorkflowNodeEntity node, Long nodeId,
-            Map<Long, WorkflowNodeEntity> nodeMap, Map<Long, List<WorkflowEdgeEntity>> outEdges,
-            Map<String, Object> variables, Long instanceId, Long modelConfigId, List<ToolDef> tools) {
-        for (WorkflowEdgeEntity edge : outEdges.get(nodeId)) {
+    private Object handleErrorRouting(Long nodeId, ExecutionState state) {
+        WorkflowNodeEntity node = state.getNodeMap().get(nodeId);
+        for (WorkflowEdgeEntity edge : state.getOutEdges().get(nodeId)) {
             if ("error".equals(edge.getEdgeType())) {
-                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+                return executeNode(edge.getTargetNodeId(), state);
             }
         }
         throw new RuntimeException("节点 " + node.getName() + " 执行失败: ...");
     }
 
-    private Object handleNextRouting(WorkflowNodeEntity node, Long nodeId, NodeExecResult result,
-            Map<Long, WorkflowNodeEntity> nodeMap, Map<Long, List<WorkflowEdgeEntity>> outEdges,
-            Map<String, Object> variables, Long instanceId, Long modelConfigId, List<ToolDef> tools) {
-        List<WorkflowEdgeEntity> edges = outEdges.get(nodeId);
+    private Object handleNextRouting(Long nodeId, NodeExecResult result,
+                                     ExecutionState state) {
+        WorkflowNodeEntity node = state.getNodeMap().get(nodeId);
+        List<WorkflowEdgeEntity> edges = state.getOutEdges().get(nodeId);
         if (edges.isEmpty()) return result.getOutput();
 
         if ("condition".equals(node.getType()) && result.getOutput() instanceof Map) {
@@ -252,7 +257,7 @@ public class WorkflowEngine {
             String target = cond ? "true" : "false";
             for (WorkflowEdgeEntity edge : edges) {
                 if (target.equals(edge.getEdgeType())) {
-                    return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+                    return executeNode(edge.getTargetNodeId(), state);
                 }
             }
             return result.getOutput();
@@ -260,7 +265,7 @@ public class WorkflowEngine {
 
         for (WorkflowEdgeEntity edge : edges) {
             if ("normal".equals(edge.getEdgeType())) {
-                return executeNode(edge.getTargetNodeId(), nodeMap, outEdges, variables, instanceId, modelConfigId, tools);
+                return executeNode(edge.getTargetNodeId(), state);
             }
         }
         return result.getOutput();

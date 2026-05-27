@@ -8,6 +8,7 @@ import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
 import com.hify.workflow.dto.*;
+import com.hify.workflow.engine.ExecutionState;
 import com.hify.workflow.engine.WorkflowEngine;
 import com.hify.workflow.entity.*;
 import com.hify.workflow.mapper.*;
@@ -152,7 +153,13 @@ public class WorkflowServiceImpl implements WorkflowService {
     public WorkflowInstanceResp run(Long id, WorkflowRunReq req) {
         Map<String, Object> input = req.getInput() != null ? req.getInput() : Map.of();
         String triggerType = req.getSessionId() != null ? "agent" : "api";
-        WorkflowInstanceEntity instance = workflowEngine.execute(id, input, req.getSessionId(), triggerType, req.getModelConfigId(), req.getTools());
+        ExecutionState execState = ExecutionState.builder()
+                .sessionId(req.getSessionId())
+                .triggerType(triggerType)
+                .modelConfigId(req.getModelConfigId())
+                .tools(req.getTools())
+                .build();
+        WorkflowInstanceEntity instance = workflowEngine.execute(id, input, execState);
         return toInstanceResp(instance);
     }
 
