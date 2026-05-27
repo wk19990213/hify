@@ -86,12 +86,7 @@ public class CircuitBreakerService {
                     throw e;
                 }
 
-                long waitMs;
-                if (LlmApiException.RATE_LIMITED.equals(type)) {
-                    waitMs = attempt == 0 ? 2000 : 4000;
-                } else {
-                    waitMs = 1000;
-                }
+                long waitMs = computeWaitMs(type, attempt);
 
                 log.warn("LLM调用重试: provider={}, errorType={}, attempt={}/{}, waitMs={}",
                         providerName, type, attempt + 1, maxRetries, waitMs);
@@ -107,5 +102,13 @@ public class CircuitBreakerService {
 
         throw lastException != null ? lastException
                 : new LlmApiException(LlmApiException.API_ERROR, "重试异常");
+    }
+
+    /** 退避等待时间计算 */
+    private long computeWaitMs(String errorType, int attempt) {
+        if (LlmApiException.RATE_LIMITED.equals(errorType)) {
+            return attempt == 0 ? 2000 : 4000;
+        }
+        return 1000;
     }
 }
