@@ -21,10 +21,6 @@ import com.hify.provider.service.ProviderDiscoveryService;
 import com.hify.provider.util.AuthConfigHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +50,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final ProviderDiscoveryService providerDiscoveryService;
     private final ProviderAdapterFactory adapterFactory;
     private final ObjectMapper objectMapper;
+    private final DocumentParserService documentParserService;
 
     @Override
     @Transactional
@@ -107,7 +104,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         String fileType = fileName != null && fileName.contains(".")
                 ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase() : "txt";
 
-        String text = parseDocument(file, fileType);
+        String text = documentParserService.parseDocument(file, fileType);
         if (text == null || text.isBlank())
             throw BizException.paramError("无法解析文档内容");
 
@@ -186,35 +183,6 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return String.format(
                 "你是一个知识库助手。请根据以下参考资料回答用户问题。如果参考资料中没有相关信息，请如实告知。\n\n参考资料：\n%s\n\n用户问题：%s\n\n回答：",
                 context, question);
-    }
-
-    private String parseDocument(MultipartFile file, String fileType) {
-        try (InputStream in = file.getInputStream()) {
-            return switch (fileType) {
-                case "pdf" -> parsePdf(in);
-                case "docx" -> parseDocx(in);
-                default -> new String(in.readAllBytes());
-            };
-        } catch (Exception e) {
-            log.error("Document parse failed: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String parsePdf(InputStream in) throws Exception {
-        try (PDDocument doc = Loader.loadPDF(in.readAllBytes())) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
-            return stripper.getText(doc);
-        }
-    }
-
-    private String parseDocx(InputStream in) throws Exception {
-        try (XWPFDocument doc = new XWPFDocument(in)) {
-            StringBuilder sb = new StringBuilder();
-            doc.getParagraphs().forEach(p -> sb.append(p.getText()).append("\n"));
-            return sb.toString();
-        }
     }
 
     private KnowledgeBaseResp toKBResp(KnowledgeBaseEntity kb) {
