@@ -24,8 +24,10 @@ import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.mapper.ProviderHealthMapper;
 import com.hify.provider.mapper.ProviderMapper;
 import com.hify.provider.mapper.ProviderModelMapper;
+import com.hify.provider.service.ModelSyncService;
 import com.hify.provider.service.ProviderHealthService;
 import com.hify.provider.service.ProviderService;
+import com.hify.provider.util.AuthConfigHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -55,6 +57,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
     private final ProviderAdapterFactory adapterFactory;
+    private final ModelSyncService modelSyncService;
 
     @Override
     public Long create(ProviderRequest req) {
@@ -83,75 +86,13 @@ public class ProviderServiceImpl implements ProviderService {
         // SSRF 防护
         UrlSecurityValidator.validateUrl(entity.getBaseUrl(), "baseUrl");
         // 自动发现模型并同步到 model_config
-        syncModels(entity, req.getAuthConfig());
+        modelSyncService.syncModels(entity, req.getAuthConfig());
         return entity.getId();
     }
 
-    /** 调用 Provider API 获取模型列表，按 model_id 去重写入 model_config，记录到 provider_model */
     @Override
     public void syncModels(ProviderEntity provider, Map<String, Object> authConfig) {
-        try {
-            ProviderAdapter adapter = adapterFactory.getAdapter(provider.getType());
-            List<String> modelIds = adapter.listModelIds(provider.getBaseUrl(), authConfig);
-            for (String modelId : modelIds) {
-                if (shouldSkipModel(modelId)) continue;
-                syncSingleModel(provider, modelId);
-            }
-            log.info("Synced {} models for provider {}", modelIds.size(), provider.getName());
-        } catch (Exception e) {
-            log.warn("Failed to sync models for provider {}: {}", provider.getName(), e.getMessage());
-        }
-    }
-
-    /** 过滤非对话模型（Embedding/Rerank/Image/TTS 等） */
-    private boolean shouldSkipModel(String modelId) {
-        String lower = modelId.toLowerCase();
-        return lower.contains("embed") || lower.contains("rerank") || lower.contains("image")
-                || lower.contains("ocr") || lower.contains("tts") || lower.contains("asr")
-                || lower.contains("caption") || lower.contains("lora");
-    }
-
-    /** 同步单个模型：UPSERT provider_model + UPSERT model_config */
-    private void syncSingleModel(ProviderEntity provider, String modelId) {
-        // 1. UPSERT provider_model
-        var existPm = providerModelMapper.selectCount(new LambdaQueryWrapper<ProviderModelEntity>()
-                .eq(ProviderModelEntity::getProviderId, provider.getId())
-                .eq(ProviderModelEntity::getModelId, modelId));
-        if (existPm == 0) {
-            ProviderModelEntity pm = new ProviderModelEntity();
-            pm.setProviderId(provider.getId());
-            pm.setModelId(modelId);
-            providerModelMapper.insert(pm);
-        }
-
-        // 2. 按 model_id 查找 model_config（全局唯一）
-        ModelConfigEntity mc = modelConfigMapper.selectOne(
-                new LambdaQueryWrapper<ModelConfigEntity>()
-                        .eq(ModelConfigEntity::getModelId, modelId)
-                        .eq(ModelConfigEntity::getDeleted, 0));
-
-        // 3. 从 provider_model 重新计算 provider_count
-        long count = providerModelMapper.selectCount(
-                new LambdaQueryWrapper<ProviderModelEntity>()
-                        .eq(ProviderModelEntity::getModelId, modelId));
-
-        if (mc != null) {
-            mc.setProviderCount((int) count);
-            if (mc.getStatus() == 0 && count > 0) {
-                mc.setStatus(1);
-            }
-            modelConfigMapper.updateById(mc);
-        } else {
-            mc = new ModelConfigEntity();
-            mc.setProviderId(provider.getId());
-            mc.setModelId(modelId);
-            mc.setName(modelId);
-            mc.setCode(modelId.replace("/", "-").replace(":", "-"));
-            mc.setStatus(1);
-            mc.setSortOrder(0);
-            mc.setProviderCount(1);
-            modelConfigMapper.insert(mc);
-        }
+        modelSyncService.syncModels(provider, authConfig);
     }
 
     @Override
@@ -290,7 +231,7 @@ public class ProviderServiceImpl implements ProviderService {
         ConnectionTestResult result = adapter.testConnection(entity, authConfig);
         providerHealthService.updateHealthRecord(providerId, result);
         // 同步模型列表（连通成功了就更新 model_config）
-        if (result.isSuccess()) syncModels(entity, authConfig);
+        if (result.isSuccess()) modelSyncService.syncModels(entity, authConfig);
         return result;
     }
 
@@ -343,18 +284,9 @@ public class ProviderServiceImpl implements ProviderService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> decryptAuthConfig(String encrypted) {
-        if (encrypted == null || encrypted.isEmpty()) {
-            return null;
-        }
-        try {
-            String json = AesEncryptor.decrypt(encrypted);
-            return objectMapper.readValue(json, Map.class);
-        } catch (Exception e) {
-            log.error("Failed to decrypt authConfig", e);
-            return null;
-        }
+        Map<String, Object> result = AuthConfigHelper.decryptAuthConfig(encrypted);
+        return result.isEmpty() ? null : result;
     }
 
     private void evictProviderCache(Long id) {
