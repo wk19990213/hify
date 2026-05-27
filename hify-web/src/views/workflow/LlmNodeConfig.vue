@@ -16,10 +16,20 @@
       <el-switch :model-value="config.toolsEnabled" size="small" @update:model-value="updateField('toolsEnabled', $event)" />
       <span class="type-hint">开启后 LLM 可自主判断是否调用 Agent 绑定的全部 MCP 工具</span>
     </el-form-item>
+    <el-form-item label="输出字段">
+      <el-input
+        :model-value="outputSchemaText"
+        placeholder="逗号分隔，如：intent, orderId, hasOrderId"
+        @update:model-value="onOutputSchemaInput"
+      />
+      <div class="type-hint">定义 LLM 输出的自定义字段名，供下游节点通过 <code v-pre>{{节点名.字段}}</code> 引用</div>
+    </el-form-item>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{ config: Record<string, any> }>()
 const emit = defineEmits<{ 'update:config': [value: Record<string, any>] }>()
 
@@ -30,6 +40,17 @@ const placeholder = `告诉 AI 要做什么，比如：
 {"intent": "查订单|退款|其他", "orderId": "订单号或null", "hasOrderId": true或false}
 
 用户消息：{{input.user_message}}`
+
+const outputSchemaText = computed(() => {
+  const schema = props.config.outputSchema
+  if (!Array.isArray(schema)) return ''
+  return schema.map((f: any) => typeof f === 'string' ? f : f.field || '').filter(Boolean).join(', ')
+})
+
+function onOutputSchemaInput(val: string) {
+  const fields = val.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+  emit('update:config', { ...props.config, outputSchema: fields })
+}
 
 function updateField(key: string, value: any) {
   emit('update:config', { ...props.config, [key]: value })

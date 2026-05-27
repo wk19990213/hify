@@ -44,6 +44,19 @@ const props = defineProps<{
 
 interface VarHint { key: string; field?: string; desc: string }
 
+/** 输出字段 Schema 定义（JSON Schema 风格，按节点类型声明输出字段） */
+interface OutputFieldDef { field: string; desc: string }
+
+const NODE_OUTPUT_FIELDS: Record<string, OutputFieldDef[]> = {
+  llm: [{ field: 'content', desc: '文本回复' }],
+  http: [
+    { field: 'body', desc: '返回的响应体' },
+    { field: 'status', desc: '返回的状态码' },
+  ],
+  condition: [{ field: 'result', desc: '判断结果（true/false）' }],
+  rag: [{ field: 'sources', desc: '检索到的文档' }],
+}
+
 const upstreamNodes = computed(() => {
   const upstreamIndices = props.edges
     .filter(e => e.targetNodeIndex === props.selectedNodeIndex)
@@ -55,47 +68,43 @@ const hasUpstream = computed(() =>
   props.edges.some(e => e.targetNodeIndex === props.selectedNodeIndex)
 )
 
+/** 从节点 config.outputSchema 读取自定义输出字段（JSON Schema 驱动，替代正则解析） */
+function readOutputSchema(configJson?: string): OutputFieldDef[] {
+  if (!configJson) return []
+  try {
+    const cfg = JSON.parse(configJson)
+    const schema = cfg.outputSchema
+    if (!Array.isArray(schema)) return []
+    return schema
+      .map((item: any) => {
+        if (typeof item === 'string') return { field: item, desc: ' 输出的 ' + item + ' 字段' }
+        if (item && typeof item.field === 'string') return { field: item.field, desc: item.desc || ' 输出的 ' + item.field + ' 字段' }
+        return null
+      })
+      .filter(Boolean) as OutputFieldDef[]
+  } catch { return [] }
+}
+
 const upstreamVars = computed((): VarHint[] => {
   const vars: VarHint[] = []
   for (const node of upstreamNodes.value) {
     if (!node.name) continue
     const name = node.name
+    // 标准输出字段（按节点类型的 JSON Schema 定义）
+    const standardFields = NODE_OUTPUT_FIELDS[node.type] || []
+    for (const f of standardFields) {
+      vars.push({ key: name, field: f.field, desc: name + ' 的' + f.desc })
+    }
+    // LLM 节点：额外从 outputSchema 读取自定义输出字段
     if (node.type === 'llm') {
-      vars.push({ key: name, field: 'content', desc: name + ' 的文本回复' })
-      const fields = parseExpectedFields(node.configJson)
-      for (const f of fields) {
-        vars.push({ key: name, field: f, desc: name + ' 输出的 ' + f + ' 字段' })
+      const customFields = readOutputSchema(node.configJson)
+      for (const f of customFields) {
+        vars.push({ key: name, field: f.field, desc: name + f.desc })
       }
-    } else if (node.type === 'http') {
-      vars.push({ key: name, field: 'body', desc: name + ' 返回的响应体' })
-      vars.push({ key: name, field: 'status', desc: name + ' 返回的状态码' })
-    } else if (node.type === 'condition') {
-      vars.push({ key: name, field: 'result', desc: name + ' 的判断结果（true/false）' })
-    } else if (node.type === 'rag') {
-      vars.push({ key: name, field: 'sources', desc: name + ' 检索到的文档' })
     }
   }
   return vars
 })
-
-function parseExpectedFields(configJson?: string): string[] {
-  if (!configJson) return []
-  try {
-    const cfg = JSON.parse(configJson)
-    const prompt: string = cfg.prompt || ''
-    const jsonMatch = prompt.match(/\{[^}]+\}/)
-    if (!jsonMatch) return []
-    const fields: string[] = []
-    const fieldRegex = /"(\w+)"\s*:/g
-    let m
-    while ((m = fieldRegex.exec(jsonMatch[0])) !== null) {
-      if (!['intent', 'result', 'content'].includes(m[1]) && !fields.includes(m[1])) {
-        fields.push(m[1])
-      }
-    }
-    return fields
-  } catch { return [] }
-}
 
 function varRef(v: VarHint): string {
   return '{{' + v.key + (v.field ? '.' + v.field : '') + '}}'

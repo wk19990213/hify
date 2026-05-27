@@ -179,6 +179,7 @@ function updateConfig(val: any) {
 const nodeConfig = reactive<Record<string, any>>({
   prompt: '', maxRetries: 0, kbId: '', query: '',
   url: '', method: 'GET', body: '', expression: '', toolsEnabled: false,
+  outputSchema: [],
 })
 
 // 当选中的节点变化时，从 configJson 同步到 reactive 对象
