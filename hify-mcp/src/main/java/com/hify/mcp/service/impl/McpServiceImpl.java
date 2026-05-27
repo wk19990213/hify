@@ -8,11 +8,11 @@ import com.hify.common.util.PageHelper;
 import com.hify.mcp.dto.*;
 import com.hify.mcp.entity.McpServerEntity;
 import com.hify.mcp.mapper.McpServerMapper;
+import com.hify.mcp.converter.McpServerConverter;
 import com.hify.mcp.mcp.McpClientManager;
 import com.hify.mcp.service.McpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +30,7 @@ public class McpServiceImpl implements McpService {
     @Override
     @Transactional
     public Long create(McpServerCreateReq req) {
-        McpServerEntity entity = new McpServerEntity();
-        BeanUtils.copyProperties(req, entity);
+        McpServerEntity entity = McpServerConverter.INSTANCE.toEntity(req);
         serverMapper.insert(entity);
         log.info("MCP server created: id={}, name={}", entity.getId(), entity.getName());
         return entity.getId();
@@ -115,8 +114,6 @@ public class McpServiceImpl implements McpService {
     }
 
     private McpServerResp toResp(McpServerEntity entity) {
-        McpServerResp resp = new McpServerResp();
-        BeanUtils.copyProperties(entity, resp);
-        return resp;
+        return McpServerConverter.INSTANCE.toResponse(entity);
     }
 }

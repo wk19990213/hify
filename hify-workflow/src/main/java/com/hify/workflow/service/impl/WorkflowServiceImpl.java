@@ -8,6 +8,7 @@ import com.hify.common.exception.BizException;
 import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
 import com.hify.workflow.dto.*;
+import com.hify.workflow.converter.WorkflowConverter;
 import com.hify.workflow.engine.ExecutionState;
 import com.hify.workflow.engine.WorkflowEngine;
 import com.hify.workflow.entity.*;
@@ -15,7 +16,6 @@ import com.hify.workflow.mapper.*;
 import com.hify.workflow.service.WorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -187,11 +187,9 @@ public class WorkflowServiceImpl implements WorkflowService {
                 new LambdaQueryWrapper<NodeExecutionEntity>()
                         .eq(NodeExecutionEntity::getInstanceId, instanceId)
                         .orderByAsc(NodeExecutionEntity::getCreatedAt));
-        resp.setNodeExecutions(executions.stream().map(e -> {
-            NodeExecutionResp ner = new NodeExecutionResp();
-            BeanUtils.copyProperties(e, ner);
-            return ner;
-        }).toList());
+        resp.setNodeExecutions(executions.stream()
+                .map(WorkflowConverter.INSTANCE::toNodeExecutionResp)
+                .toList());
         return resp;
     }
 
@@ -229,8 +227,7 @@ public class WorkflowServiceImpl implements WorkflowService {
     }
 
     private WorkflowResp toResp(WorkflowEntity entity) {
-        WorkflowResp resp = new WorkflowResp();
-        BeanUtils.copyProperties(entity, resp);
+        WorkflowResp resp = WorkflowConverter.INSTANCE.toResponse(entity);
 
         List<WorkflowNodeEntity> nodes = nodeMapper.selectList(
                 new LambdaQueryWrapper<WorkflowNodeEntity>()
@@ -273,8 +270,6 @@ public class WorkflowServiceImpl implements WorkflowService {
     }
 
     private WorkflowInstanceResp toInstanceResp(WorkflowInstanceEntity entity) {
-        WorkflowInstanceResp resp = new WorkflowInstanceResp();
-        BeanUtils.copyProperties(entity, resp);
-        return resp;
+        return WorkflowConverter.INSTANCE.toInstanceResp(entity);
     }
 }

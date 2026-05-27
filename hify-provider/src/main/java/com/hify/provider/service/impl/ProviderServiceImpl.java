@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
 import com.hify.provider.constant.ProviderConstant;
+import com.hify.provider.converter.ProviderConverter;
 import com.hify.provider.dto.ConnectionTestResult;
 import com.hify.provider.dto.ProviderRequest;
 import com.hify.provider.dto.ProviderResponse;
@@ -30,7 +31,6 @@ import com.hify.provider.service.ProviderService;
 import com.hify.provider.util.AuthConfigHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
@@ -61,8 +61,7 @@ public class ProviderServiceImpl implements ProviderService {
 
     @Override
     public Long create(ProviderRequest req) {
-        ProviderEntity entity = new ProviderEntity();
-        BeanUtils.copyProperties(req, entity, "authConfig");
+        ProviderEntity entity = ProviderConverter.INSTANCE.toEntity(req);
         if (entity.getCode() == null || entity.getCode().isBlank()) {
             entity.setCode(req.getType().toLowerCase() + "-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         }
@@ -324,8 +323,7 @@ public class ProviderServiceImpl implements ProviderService {
     }
 
     private ProviderResponse convertToResponse(ProviderEntity entity) {
-        ProviderResponse resp = new ProviderResponse();
-        BeanUtils.copyProperties(entity, resp, "authConfig");
+        ProviderResponse resp = ProviderConverter.INSTANCE.toResponse(entity);
         // 解密并脱敏 authConfig
         Map<String, Object> authMap = decryptAuthConfig(entity.getAuthConfig());
         if (authMap != null) {
@@ -337,6 +335,12 @@ public class ProviderServiceImpl implements ProviderService {
                 }
             }
             resp.setAuthConfig(masked);
+        }
+        // extraConfig 类型不同（Object → Map），需显式赋值
+        if (entity.getExtraConfig() instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> ec = (Map<String, Object>) entity.getExtraConfig();
+            resp.setExtraConfig(ec);
         }
         return resp;
     }

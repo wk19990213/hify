@@ -6,7 +6,7 @@ import com.hify.agent.dto.AgentRequest;
 import com.hify.agent.dto.AgentResponse;
 import com.hify.agent.dto.AgentToolResponse;
 import com.hify.agent.entity.AgentEntity;
-import com.hify.agent.mapper.AgentConvertMapper;
+import com.hify.agent.converter.AgentConverter;
 import com.hify.agent.mapper.AgentMapper;
 import com.hify.agent.service.AgentMcpBindingService;
 import com.hify.agent.service.AgentService;
@@ -18,7 +18,6 @@ import com.hify.provider.entity.ModelConfigEntity;
 import com.hify.provider.mapper.ModelConfigMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,8 +52,7 @@ public class AgentServiceImpl implements AgentService {
                 throw BizException.paramError("Agent 编码已存在");
             }
         }
-        AgentEntity entity = new AgentEntity();
-        BeanUtils.copyProperties(req, entity);
+        AgentEntity entity = AgentConverter.INSTANCE.toEntity(req);
         if (entity.getCode() == null || entity.getCode().isBlank()) {
             entity.setCode("agent-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         }
@@ -245,6 +243,6 @@ public class AgentServiceImpl implements AgentService {
     }
 
     private AgentResponse convertToResponse(AgentEntity entity) {
-        return AgentConvertMapper.INSTANCE.toResponse(entity);
+        return AgentConverter.INSTANCE.toResponse(entity);
     }
 }

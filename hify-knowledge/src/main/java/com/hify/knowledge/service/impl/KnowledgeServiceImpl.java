@@ -6,11 +6,11 @@ import com.hify.common.result.PageResult;
 import com.hify.common.util.PageHelper;
 import com.hify.knowledge.dto.*;
 import com.hify.knowledge.entity.*;
+import com.hify.knowledge.converter.KnowledgeConverter;
 import com.hify.knowledge.mapper.*;
 import com.hify.knowledge.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -117,14 +117,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private KnowledgeBaseResp toKBResp(KnowledgeBaseEntity kb) {
-        KnowledgeBaseResp r = new KnowledgeBaseResp();
-        BeanUtils.copyProperties(kb, r);
-        return r;
+        return KnowledgeConverter.INSTANCE.toKBResp(kb);
     }
 
     private DocumentResp toDocResp(DocumentEntity doc) {
-        DocumentResp r = new DocumentResp();
-        BeanUtils.copyProperties(doc, r);
-        return r;
+        return KnowledgeConverter.INSTANCE.toDocResp(doc);
     }
 }

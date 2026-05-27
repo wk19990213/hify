@@ -69,118 +69,27 @@
               <div class="type-hint">{{ typeHint(currentNode.type) }}</div>
             </el-form-item>
 
-            <template v-if="currentNode.type === 'llm'">
-              <el-form-item label="做什么">
-                <el-input
-                  v-model="nodeConfig.prompt" type="textarea" :rows="5"
-                  :placeholder="llmPlaceholder"
-                />
-                <div class="type-hint">告诉 AI 要做什么。可以用 <code v-pre>{{节点名.字段}}</code> 引用前面步骤的结果</div>
-              </el-form-item>
-              <el-form-item label="最多重试">
-                <el-input-number v-model="nodeConfig.maxRetries" :min="0" :max="5" />
-              </el-form-item>
-              <el-form-item label="工具调用">
-                <el-switch v-model="nodeConfig.toolsEnabled" size="small" />
-                <span class="type-hint">开启后 LLM 可自主判断是否调用 Agent 绑定的全部 MCP 工具</span>
-              </el-form-item>
-            </template>
-
-            <template v-if="currentNode.type === 'rag'">
-              <el-form-item label="知识库">
-                <el-input v-model="nodeConfig.kbId" placeholder="选择要检索的知识库" />
-              </el-form-item>
-              <el-form-item label="搜什么">
-                <el-input v-model="nodeConfig.query" placeholder="比如：{{input.user_message}}" />
-              </el-form-item>
-            </template>
-
-            <template v-if="currentNode.type === 'http'">
-              <el-form-item label="接口地址">
-                <el-input v-model="nodeConfig.url" placeholder="https://api.example.com/orders" />
-              </el-form-item>
-              <el-form-item label="请求方式">
-                <el-select v-model="nodeConfig.method">
-                  <el-option label="GET" value="GET" />
-                  <el-option label="POST" value="POST" />
-                  <el-option label="PUT" value="PUT" />
-                  <el-option label="DELETE" value="DELETE" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="请求体">
-                <el-input v-model="nodeConfig.body" type="textarea" :rows="3" placeholder="POST/PUT 时的 JSON 数据" />
-              </el-form-item>
-            </template>
-
-            <template v-if="currentNode.type === 'condition'">
-              <el-form-item label="条件">
-                <el-input v-model="nodeConfig.expression" placeholder="比如：{{查订单.hasOrderId}} == true" />
-                <div class="type-hint">
-                  支持 <code>==</code>（等于）和 <code>!=</code>（不等于）。结果决定走「条件成立」还是「条件不成立」分支
-                </div>
-              </el-form-item>
-            </template>
+            <component
+              :is="configComponent"
+              v-if="configComponent"
+              :config="nodeConfig"
+              @update:config="onConfigUpdate"
+            />
           </el-form>
 
-          <!-- 可用变量提示 -->
-          <div class="var-hints">
-            <div class="var-hints-title">可用变量</div>
-            <div class="var-group">
-              <div class="var-group-title">系统变量（工作流触发时自动注入）</div>
-              <div class="var-hints-list">
-                <span class="var-tag sys-var">
-                  <code v-pre>{{input.user_message}}</code>
-                  <span class="var-desc">用户发送的消息内容</span>
-                </span>
-                <span class="var-tag sys-var">
-                  <code v-pre>{{input.session_id}}</code>
-                  <span class="var-desc">当前对话的会话 ID</span>
-                </span>
-              </div>
-            </div>
-            <div class="var-group" v-if="upstreamNodes.length">
-              <div class="var-group-title">上游节点输出</div>
-              <div class="var-hints-list">
-                <span v-for="v in upstreamVars" :key="v.key + '.' + (v.field || '')" class="var-tag">
-                  <code>{{ varRef(v) }}</code>
-                  <span class="var-desc">{{ v.desc }}</span>
-                </span>
-              </div>
-            </div>
-            <div class="var-group" v-else>
-              <div class="var-group-title">上游节点输出</div>
-              <div class="var-hints-empty" v-if="selectedNodeIndex !== null && !hasUpstreamEdge()">
-                当前节点是第一个节点，没有上游节点。连线到当前节点的节点会自动出现在这里。
-              </div>
-            </div>
-          </div>
+          <VarHintsPanel
+            :nodes="form.nodes"
+            :edges="form.edges"
+            :selected-node-index="selectedNodeIndex!"
+          />
         </el-card>
 
-        <el-card style="margin-top: 16px;">
-          <template #header>连线配置</template>
-          <div class="edge-list">
-            <div v-for="(edge, idx) in outEdges" :key="idx" class="edge-item">
-              <el-select v-model="edge.edgeType" size="small" style="width: 140px;">
-                <el-option label="默认" value="normal" />
-                <el-option label="条件成立" value="true" />
-                <el-option label="条件不成立" value="false" />
-                <el-option label="异常" value="error" />
-              </el-select>
-              <span class="arrow">→</span>
-              <el-select v-model="edge.targetNodeIndex" size="small" style="width: 160px;">
-                <el-option
-                  v-for="(n, i) in form.nodes"
-                  :key="i"
-                  :disabled="i === selectedNodeIndex"
-                  :label="(n.name || '节点 ' + (i + 1)) + '  [' + typeLabel(n.type) + ']'"
-                  :value="i"
-                />
-              </el-select>
-              <el-button size="small" type="danger" circle :icon="Delete" @click="removeEdge(idx)" />
-            </div>
-            <el-button size="small" :icon="Plus" @click="addEdge">添加连线</el-button>
-          </div>
-        </el-card>
+        <EdgeConfigPanel
+          :edges="form.edges"
+          :nodes="form.nodes"
+          :selected-node-index="selectedNodeIndex!"
+          @update:edges="form.edges = $event"
+        />
       </div>
 
       <div v-else class="empty-hint">点击左侧节点进行配置</div>
@@ -194,6 +103,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import WorkflowCanvas from './components/WorkflowCanvas.vue'
+import LlmNodeConfig from './LlmNodeConfig.vue'
+import HttpNodeConfig from './HttpNodeConfig.vue'
+import RagNodeConfig from './RagNodeConfig.vue'
+import ConditionNodeConfig from './ConditionNodeConfig.vue'
+import EdgeConfigPanel from './EdgeConfigPanel.vue'
+import VarHintsPanel from './VarHintsPanel.vue'
 import {
   createWorkflow, getWorkflowDetail, updateWorkflow,
   type NodeItem, type EdgeItem
@@ -233,13 +148,14 @@ function typeHint(type: string): string {
   return map[type] || ''
 }
 
-const llmPlaceholder = `告诉 AI 要做什么，比如：
+const configComponentMap: Record<string, any> = {
+  llm: LlmNodeConfig,
+  condition: ConditionNodeConfig,
+  rag: RagNodeConfig,
+  http: HttpNodeConfig,
+}
 
-你是一个客服助手。分析用户消息，提取意图和订单号。
-仅返回一行 JSON：
-{"intent": "查订单|退款|其他", "orderId": "订单号或null", "hasOrderId": true或false}
-
-用户消息：{{input.user_message}}`
+const configComponent = computed(() => configComponentMap[currentNode.value.type] || null)
 
 const currentNode = computed(() => {
   if (selectedNodeIndex.value === null || !form.value.nodes[selectedNodeIndex.value]) {
@@ -259,7 +175,7 @@ function updateConfig(val: any) {
   }
 }
 
-/** 统一配置对象 — 替代 9 个独立 configField computed */
+/** 统一配置对象 */
 const nodeConfig = reactive<Record<string, any>>({
   prompt: '', maxRetries: 0, kbId: '', query: '',
   url: '', method: 'GET', body: '', expression: '', toolsEnabled: false,
@@ -278,73 +194,8 @@ watch(nodeConfig, (val) => {
   updateConfig({ ...val })
 }, { deep: true })
 
-const outEdges = computed(() => {
-  if (selectedNodeIndex.value === null) return []
-  return form.value.edges.filter(e => e.sourceNodeIndex === selectedNodeIndex.value)
-})
-
-// 当前节点的上游节点列表（通过连线直接连接到当前节点的节点）
-const upstreamNodes = computed(() => {
-  if (selectedNodeIndex.value === null) return []
-  const upstreamIndices = form.value.edges
-    .filter(e => e.targetNodeIndex === selectedNodeIndex.value)
-    .map(e => e.sourceNodeIndex)
-  return [...new Set(upstreamIndices)].map(i => form.value.nodes[i]).filter(Boolean)
-})
-
-interface VarHint { key: string; field?: string; desc: string }
-
-const upstreamVars = computed((): VarHint[] => {
-  const vars: VarHint[] = []
-  for (const node of upstreamNodes.value) {
-    if (!node.name) continue
-    const name = node.name
-    if (node.type === 'llm') {
-      vars.push({ key: name, field: 'content', desc: name + ' 的文本回复' })
-      const fields = parseExpectedFields(node.configJson)
-      for (const f of fields) {
-        vars.push({ key: name, field: f, desc: name + ' 输出的 ' + f + ' 字段' })
-      }
-    } else if (node.type === 'http') {
-      vars.push({ key: name, field: 'body', desc: name + ' 返回的响应体' })
-      vars.push({ key: name, field: 'status', desc: name + ' 返回的状态码' })
-    } else if (node.type === 'condition') {
-      vars.push({ key: name, field: 'result', desc: name + ' 的判断结果（true/false）' })
-    } else if (node.type === 'rag') {
-      vars.push({ key: name, field: 'sources', desc: name + ' 检索到的文档' })
-    }
-  }
-  return vars
-})
-
-function hasUpstreamEdge(): boolean {
-  if (selectedNodeIndex.value === null) return false
-  return form.value.edges.some(e => e.targetNodeIndex === selectedNodeIndex.value)
-}
-
-// 从 LLM prompt 中尝试解析预期的 JSON 输出字段
-function parseExpectedFields(configJson?: string): string[] {
-  if (!configJson) return []
-  try {
-    const cfg = JSON.parse(configJson)
-    const prompt: string = cfg.prompt || ''
-    // 匹配 JSON 示例中的字段名
-    const jsonMatch = prompt.match(/\{[^}]+\}/)
-    if (!jsonMatch) return []
-    const fields: string[] = []
-    const fieldRegex = /"(\w+)"\s*:/g
-    let m
-    while ((m = fieldRegex.exec(jsonMatch[0])) !== null) {
-      if (!['intent', 'result', 'content'].includes(m[1]) && !fields.includes(m[1])) {
-        fields.push(m[1])
-      }
-    }
-    return fields
-  } catch { return [] }
-}
-
-function varRef(v: VarHint): string {
-  return '{{' + v.key + (v.field ? '.' + v.field : '') + '}}'
+function onConfigUpdate(newConfig: Record<string, any>) {
+  Object.assign(nodeConfig, newConfig)
 }
 
 function addNode() {
@@ -359,17 +210,6 @@ function removeNode(idx: number) {
     if (e.targetNodeIndex > idx) e.targetNodeIndex--
   })
   if (selectedNodeIndex.value === idx) selectedNodeIndex.value = null
-}
-
-function addEdge() {
-  if (selectedNodeIndex.value === null) return
-  form.value.edges.push({ sourceNodeIndex: selectedNodeIndex.value, targetNodeIndex: 0, edgeType: 'normal' })
-}
-
-function removeEdge(idx: number) {
-  const edgeToRemove = outEdges.value[idx]
-  const globalIdx = form.value.edges.indexOf(edgeToRemove)
-  if (globalIdx >= 0) form.value.edges.splice(globalIdx, 1)
 }
 
 function onCanvasUpdatePosition(index: number, x: number, y: number) {
@@ -434,69 +274,4 @@ onMounted(async () => {
   border-radius: 3px;
   font-size: 12px;
 }
-
-.var-hints {
-  margin-top: 12px;
-  padding: 12px;
-  background: var(--el-fill-color-lighter);
-  border-radius: 6px;
-}
-.var-hints-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 10px;
-}
-.var-group {
-  margin-bottom: 10px;
-}
-.var-group:last-child {
-  margin-bottom: 0;
-}
-.var-group-title {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 6px;
-}
-.var-hints-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.var-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: #fff;
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: default;
-}
-.var-tag.sys-var {
-  border-color: var(--el-color-success-light-3);
-  background: var(--el-color-success-light-9);
-}
-.var-tag code {
-  color: var(--el-color-primary);
-  font-weight: 600;
-}
-.var-tag.sys-var code {
-  color: var(--el-color-success);
-}
-.var-desc {
-  color: var(--el-text-color-placeholder);
-  font-size: 11px;
-}
-.var-hints-empty {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  font-style: italic;
-}
-
-.edge-list { display: flex; flex-direction: column; gap: 8px; }
-.edge-item { display: flex; gap: 8px; align-items: center; }
-.arrow { font-size: 14px; color: var(--el-text-color-secondary); flex-shrink: 0; }
 </style>
