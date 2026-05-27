@@ -5,6 +5,7 @@ import com.hify.provider.entity.ProviderHealthEntity;
 import com.hify.provider.mapper.ProviderHealthMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -28,8 +29,30 @@ public class ProviderHealthService {
             health = new ProviderHealthEntity();
             health.setProviderId(providerId);
         }
-        health.setLastCheckTime(LocalDateTime.now());
+        applyResult(health, result);
 
+        if (isNew) {
+            try {
+                providerHealthMapper.insert(health);
+            } catch (DuplicateKeyException e) {
+                // TOCTOU: 另一线程已并发插入，回退到更新
+                health = providerHealthMapper.selectById(providerId);
+                if (health == null) {
+                    providerHealthMapper.insert(health);
+                } else {
+                    applyResult(health, result);
+                    providerHealthMapper.updateById(health);
+                }
+                return health;
+            }
+        } else {
+            providerHealthMapper.updateById(health);
+        }
+        return health;
+    }
+
+    private void applyResult(ProviderHealthEntity health, ConnectionTestResult result) {
+        health.setLastCheckTime(LocalDateTime.now());
         if (result.isSuccess()) {
             health.setStatus("HEALTHY");
             health.setConsecutiveFailures(0);
@@ -47,12 +70,5 @@ public class ProviderHealthService {
                 health.setStatus("DOWN");
             }
         }
-
-        if (isNew) {
-            providerHealthMapper.insert(health);
-        } else {
-            providerHealthMapper.updateById(health);
-        }
-        return health;
     }
 }
