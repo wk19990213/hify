@@ -1,5 +1,6 @@
 package com.hify.common.http;
 
+import com.hify.common.util.SafeDns;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -27,6 +28,8 @@ public class LlmHttpClient {
 
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    private final SafeDns safeDns = new SafeDns();
+
     private final OkHttpClient syncClient;
     private final OkHttpClient streamClient;
 
@@ -37,6 +40,7 @@ public class LlmHttpClient {
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.NONE);
 
         this.syncClient = new OkHttpClient.Builder()
+                .dns(safeDns)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -47,6 +51,7 @@ public class LlmHttpClient {
                 .build();
 
         this.streamClient = new OkHttpClient.Builder()
+                .dns(safeDns)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .connectTimeout(5, TimeUnit.SECONDS)
