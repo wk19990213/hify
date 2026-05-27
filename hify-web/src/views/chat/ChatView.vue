@@ -170,7 +170,7 @@ const scrollToBottom = (force = false) => {
 }
 
 // ── SSE 流解析 ──
-async function readSseStream(reader: ReadableStreamDefaultReader<Uint8Array>, onData: (text: string) => void) {
+async function readSseStream(reader: ReadableStreamDefaultReader<Uint8Array>, onData: (text: string) => void, onDone: () => void) {
   const decoder = new TextDecoder()
   let buffer = ''
   while (true) {
@@ -181,7 +181,7 @@ async function readSseStream(reader: ReadableStreamDefaultReader<Uint8Array>, on
     for (const line of lines) {
       if (!line.startsWith('data:')) continue
       const data = line.substring(5).trim()
-      if (data === '[DONE]') return
+      if (data === '[DONE]') { onDone(); return }
       if (!data) continue
       onData(data)
     }
@@ -190,6 +190,7 @@ async function readSseStream(reader: ReadableStreamDefaultReader<Uint8Array>, on
     const data = buffer.substring(5).trim()
     if (data && data !== '[DONE]') onData(data)
   }
+  onDone()
 }
 
 // ── 发送消息 ──
@@ -198,34 +199,29 @@ const handleSend = async () => {
   if (!text || loading.value || !sessionId.value) return
   inputText.value = ''; loading.value = true; userScrolledUp.value = false
   messages.value.push({ id: 0, role: 'user', content: text, tokenCount: 0, createdAt: '' })
-  appendAssistantMessage()
-  scrollToBottom(true)
+  appendAssistantMessage(''); scrollToBottom(true)
   abortController = new AbortController()
-
+  const lastMsg = messages.value[messages.value.length - 1]
   try {
     const token = localStorage.getItem('hify_token')
     const response = await fetch(`/api/v1/chat/sessions/${sessionId.value}/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ content: text }), signal: abortController.signal
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('No reader')
-    const lastMsg = messages.value[messages.value.length - 1]
-    await readSseStream(reader, (data) => { lastMsg.content += data; scrollToBottom() })
-    lastMsg.loading = false
-    currentTitle.value = text.substring(0, 20)
-    loadSessions()
-  } catch (err: any) {
-    const lastMsg = messages.value[messages.value.length - 1]; lastMsg.loading = false
+    const reader = response.body?.getReader(); if (!reader) throw new Error('No reader')
+    await readSseStream(reader,
+      (data) => { lastMsg.content += data; scrollToBottom() },
+      () => { lastMsg.loading = false; currentTitle.value = text.substring(0, 20); loadSessions() }
+    )
+  } catch (err: any) { lastMsg.loading = false
     if (err?.name === 'AbortError') { if (!lastMsg.content) lastMsg.content = '(已终止)' }
     else { lastMsg.isError = true; if (!lastMsg.content) lastMsg.content = '连接失败，请重试' }
   } finally { loading.value = false; abortController = null; scrollToBottom(true) }
 }
 
-function appendAssistantMessage() {
-  messages.value.push({ id: 0, role: 'assistant', content: '', tokenCount: 0, createdAt: '', loading: true })
+function appendAssistantMessage(content = '') {
+  messages.value.push({ id: 0, role: 'assistant', content, tokenCount: 0, createdAt: '', loading: true })
 }
 
 const handleStop = () => { abortController?.abort(); loading.value = false }
