@@ -1,0 +1,1294 @@
+{
+  "meta": {
+    "format": "techdebt-task-list",
+    "version": "1.0",
+    "generatedAt": "2026-05-27",
+    "totalTasks": 39,
+    "phases": 5,
+    "tddCycle": "red → green → refactor → commit",
+    "source": "plan/techdebt-prd.json"
+  },
+  "phases": [
+    { "id": 1, "name": "收尾 + S项批量处理（安全补漏）", "taskRange": "T001-T013" },
+    { "id": 2, "name": "JWT 认证 + 限流（P0 安全前置）", "taskRange": "T014-T020" },
+    { "id": 3, "name": "提取共享 + 小方法拆分", "taskRange": "T021-T025" },
+    { "id": 4, "name": "大类拆分", "taskRange": "T026-T033" },
+    { "id": 5, "name": "前端组件拆分 + 安全收尾", "taskRange": "T034-T039" }
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "phase": 1,
+      "category": "dedup",
+      "refs": ["DUP-03"],
+      "severity": "P1",
+      "title": "ToolCallHandler 补 reasoning_content 参数 + ChatServiceImpl 接入",
+      "description": "ChatServiceImpl 第 642 行有私有 executeToolCalls 方法，内联构建 assistant 消息并执行 MCP 工具。ToolCallHandler 已提供共享实现但缺少 reasoning_content 支持。需补全参数并接入。",
+      "dependsOn": [],
+      "blocks": ["T002"],
+      "status": "completed",
+      "effort": "S",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/service/ToolCallHandler.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/ChatServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "ChatServiceImpl 私有 executeToolCalls 方法体替换为委托 ToolCallHandler.executeToolCalls",
+        "reasoning_content 字段在 assistant 消息中正确填充",
+        "hify-chat + hify-provider 编译通过",
+        "ChatServiceImplTest 2 个测试通过",
+        "ToolCallHandlerTest 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "在 ToolCallHandlerTest 中添加测试：含 reasoning_content 的 llmResponse 应输出含对应字段的 assistant 消息", "verify": "mvn test -pl hify-provider -Dtest=ToolCallHandlerTest 失败" },
+        { "step": "green", "action": "ToolCallHandler.executeToolCalls 签名补 String reasoningContent 参数，构建 assistantMsg 后条件添加 reasoning_content", "verify": "mvn test -pl hify-provider -Dtest=ToolCallHandlerTest 通过" },
+        { "step": "green", "action": "ChatServiceImpl 注入 ToolCallHandler，私有方法体替换为委托调用", "verify": "mvn compile -pl hify-chat 通过" },
+        { "step": "refactor", "action": "检查 ChatServiceImpl 是否仍直接引用 McpClientManager 做工具调用，确保只有 ToolCallHandler 一处", "verify": "grep -n 'mcpClientManager.callTool' ChatServiceImpl.java 无结果" },
+        { "step": "commit", "action": "git add hify-provider/.../ToolCallHandler.java hify-chat/.../ChatServiceImpl.java", "verify": "git diff --cached 确认仅改这两个文件" }
+      ]
+    },
+    {
+      "id": "T002",
+      "phase": 1,
+      "category": "dedup",
+      "refs": ["DUP-03"],
+      "severity": "P1",
+      "title": "LlmNodeExecutor 接入 ToolCallHandler",
+      "description": "LlmNodeExecutor.execute() 第 104-128 行内联构建 tool_call maps + for 循环 callTool。替换为 ToolCallHandler 委托调用。删除不再需要的 executeToolCall 私有方法。",
+      "dependsOn": ["T001"],
+      "blocks": [],
+      "status": "completed",
+      "effort": "S",
+      "files": [
+        "hify-workflow/src/main/java/com/hify/workflow/engine/LlmNodeExecutor.java"
+      ],
+      "acceptanceCriteria": [
+        "LlmNodeExecutor 注入 ToolCallHandler 并委托工具调用",
+        "私有 executeToolCall 方法已删除",
+        "hify-workflow 编译通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 LlmNodeExecutor 内联代码行数", "verify": "grep -c 'mcpClientManager.callTool' LlmNodeExecutor.java 返回 >0" },
+        { "step": "green", "action": "注入 ToolCallHandler，替换工具调用循环为 toolCallHandler.executeToolCalls(...)，删除 executeToolCall 方法", "verify": "mvn compile -pl hify-workflow 通过" },
+        { "step": "refactor", "action": "确认 LlmNodeExecutor 不再直接依赖 McpClientManager（或确认该依赖仅用于其他目的）", "verify": "grep 'McpClientManager' LlmNodeExecutor.java 检查是否仅用于注入 ToolCallHandler" },
+        { "step": "commit", "action": "git add hify-workflow/.../LlmNodeExecutor.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T003",
+      "phase": 1,
+      "category": "dedup",
+      "refs": ["DUP-02"],
+      "severity": "P1",
+      "title": "ProviderServiceImpl 解密改用 AuthConfigHelper",
+      "description": "ProviderServiceImpl 中仍有一处内联 AesEncryptor.decrypt(encrypted) + objectMapper.readValue() 的模式。替换为 AuthConfigHelper.decryptAuthConfig()。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "effort": "S",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/service/impl/ProviderServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "ProviderServiceImpl 中无直接 AesEncryptor.decrypt 调用",
+        "hify-provider 编译通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "grep AesEncryptor.decrypt in ProviderServiceImpl", "verify": "返回 1 处匹配（line 352 附近）" },
+        { "step": "green", "action": "替换为 AuthConfigHelper.decryptAuthConfig(encrypted)，删除 AesEncryptor import", "verify": "mvn compile -pl hify-provider 通过" },
+        { "step": "commit", "action": "git add hify-provider/.../ProviderServiceImpl.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T004",
+      "phase": 1,
+      "category": "dedup",
+      "refs": ["DUP-04"],
+      "severity": "P1",
+      "title": "提取 ProviderHealthService，修复 TOCTOU 竞态",
+      "description": "ProviderServiceImpl.updateProviderHealth 和 ProviderHealthScheduler.updateHealth 重复实现健康记录更新。提取为 ProviderHealthService + Impl，统一入口。修复 selectOne→insert 的 TOCTOU 竞态。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:15:00+08:00",
+      "completed_at": "2026-05-27T14:05:00+08:00",
+      "commit": "0d06361",
+      "effort": "M",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/service/ProviderHealthService.java",
+        "hify-provider/src/test/java/com/hify/provider/service/ProviderHealthServiceTest.java"
+      ],
+      "acceptanceCriteria": [
+        "健康记录更新仅 ProviderHealthServiceImpl 一处实现",
+        "DuplicateKeyException 捕获处理并发插入冲突",
+        "3 次连续失败阈值逻辑仅在一处",
+        "hify-provider 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "检查当前重复代码行数", "verify": "grep -c 'updateHealthRecord\|updateProviderHealth\|updateHealth' 确认 2 处独立实现" },
+        { "step": "green", "action": "新建 ProviderHealthService 接口 + ProviderHealthServiceImpl（含 DuplicateKeyException 处理）", "verify": "hify-provider 编译通过" },
+        { "step": "green", "action": "ProviderServiceImpl + ProviderHealthScheduler 注入 ProviderHealthService，替换内联逻辑为委托调用", "verify": "mvn compile -pl hify-provider 通过" },
+        { "step": "refactor", "action": "检查是否有未使用的 import 需要清理（如 ProviderHealthScheduler 中不再需要的依赖）", "verify": "IDE 无 warning" },
+        { "step": "commit", "action": "git add hify-provider/src/main/java/com/hify/provider/service/ hify-provider/src/main/java/com/hify/provider/service/impl/ hify-provider/src/main/java/com/hify/provider/scheduler/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T005",
+      "phase": 1,
+      "category": "deadcode",
+      "refs": ["DEAD-05", "DEAD-06", "DEAD-07", "DEAD-08", "DEAD-09", "DEAD-10", "DEAD-11", "DEAD-12"],
+      "severity": "P2",
+      "title": "清理剩余死代码（未使用字段+未使用 import）",
+      "description": "删除 WorkflowServiceImpl 未使用 ObjectMapper 字段。清理 AgentServiceImpl/ProviderServiceImpl/ProviderController/EmbeddingService 中 8 处未使用 import。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:06:00+08:00",
+      "completed_at": "2026-05-27T14:06:00+08:00",
+      "commit": "(skip — dead code already cleaned in prior commits)",
+      "effort": "S",
+      "files": [
+        "hify-workflow/src/main/java/com/hify/workflow/service/impl/WorkflowServiceImpl.java",
+        "hify-agent/src/main/java/com/hify/agent/service/impl/AgentServiceImpl.java",
+        "hify-provider/src/main/java/com/hify/provider/service/impl/ProviderServiceImpl.java",
+        "hify-provider/src/main/java/com/hify/provider/controller/ProviderController.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/EmbeddingService.java"
+      ],
+      "acceptanceCriteria": [
+        "所有列出的未使用字段和 import 已删除",
+        "mvn compile -DskipTests 无错误"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "检查各文件未使用 import/字段", "verify": "IDE warning 确认存在" },
+        { "step": "green", "action": "逐一删除：ObjectMapper 字段 + LambdaUpdateWrapper/JsonNode/AbstractProviderAdapter/ArrayList/HashMap/Comparator/List import", "verify": "mvn compile -DskipTests 通过" },
+        { "step": "commit", "action": "git add 5 个文件", "verify": "git diff --cached 仅包含删除行" }
+      ]
+    },
+    {
+      "id": "T006",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-03"],
+      "severity": "P1",
+      "title": "EmbeddingService 添加 SSRF URL 校验",
+      "description": "callApi() 和 embedViaOpenAiApi() 发起 HTTP 请求前未经过 UrlSecurityValidator 校验。添加校验调用。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:07:00+08:00",
+      "completed_at": "2026-05-27T14:07:00+08:00",
+      "commit": "(skip — SSRF validation already in place at callApi L64 + embedViaOpenAiApi L102)",
+      "effort": "S",
+      "files": [
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/EmbeddingService.java"
+      ],
+      "acceptanceCriteria": [
+        "内网地址调用 embed 方法时抛出异常",
+        "外网 HTTPS 地址正常工作",
+        "hify-knowledge 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "检查当前缺少校验", "verify": "grep 'validateUrl' EmbeddingService.java 无结果" },
+        { "step": "green", "action": "在 callApi() 和 embedViaOpenAiApi() 中调用 UrlSecurityValidator.validateUrl(url, 'embedding')", "verify": "mvn compile -pl hify-knowledge 通过" },
+        { "step": "refactor", "action": "确认 KnowledgeServiceImplTest 仍通过", "verify": "mvn test -pl hify-knowledge" },
+        { "step": "commit", "action": "git add hify-knowledge/.../EmbeddingService.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T007",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-04", "SEC-17"],
+      "severity": "P1",
+      "title": "UrlSecurityValidator localhost HTTP 可配置开关 + RFC 1918 注释",
+      "description": "添加 security.url-validator.allow-localhost-http 配置项（默认 false）。添加 RFC 1918 范围注释。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:08:00+08:00",
+      "completed_at": "2026-05-27T14:10:56+08:00",
+      "commit": "5b161c4",
+      "effort": "S",
+      "files": [
+        "hify-common/src/main/java/com/hify/common/util/UrlSecurityValidator.java",
+        "hify-app/src/main/resources/application.yml"
+      ],
+      "acceptanceCriteria": [
+        "默认配置下 localhost HTTP 被拒绝",
+        "配置 allow-localhost-http=true 后放行",
+        "172.16/12 范围有 RFC 1918 注释"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "阅读当前 isLocalhost 放行逻辑", "verify": "发现无条件放行 localhost" },
+        { "step": "green", "action": "添加 @Value 配置项 allowLocalhostHttp，默认 false。添加 RFC 1918 注释。", "verify": "mvn compile -pl hify-common 通过" },
+        { "step": "green", "action": "application.yml 添加 security.url-validator.allow-localhost-http 配置", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-common/.../UrlSecurityValidator.java hify-app/.../application.yml", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T008",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-05"],
+      "severity": "P1",
+      "title": "MCP 日志脱敏 — HttpJsonRpcTransport",
+      "description": "log.debug 全文记录 JSON-RPC 请求体含 authHeaders 中的 API Key。改为仅记录 method+params，且对 params 做脱敏。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:15:00+08:00",
+      "completed_at": "2026-05-27T14:15:00+08:00",
+      "commit": "(skip — DEBUG log already sanitized: method+id only, full body at TRACE)",
+      "effort": "S",
+      "files": [
+        "hify-mcp/src/main/java/com/hify/mcp/mcp/HttpJsonRpcTransport.java"
+      ],
+      "acceptanceCriteria": [
+        "DEBUG 级别下 MCP 日志不含 API Key 明文",
+        "日志仍可定位 method 和 params"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前日志输出", "verify": "grep 'log.debug.*MCP' HttpJsonRpcTransport.java 显示全文记录" },
+        { "step": "green", "action": "从请求解析 method/params 字段，只记录 method + LogSanitizer.sanitize(params)。响应体用 LogSanitizer 脱敏后记录。", "verify": "mvn compile -pl hify-mcp 通过" },
+        { "step": "commit", "action": "git add hify-mcp/.../HttpJsonRpcTransport.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T009",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-06", "SEC-10"],
+      "severity": "P1",
+      "title": "LlmHttpClient 异常消息脱敏 + HttpLoggingInterceptor 级别调整",
+      "description": "SEC-06: mapException() 将上游 responseBody 直接返回给前端。改为服务端日志记录完整信息，前端只显示通用提示。SEC-10: HttpLoggingInterceptor BASIC 级别会记录 Authorization 头，改为 HEADERS 级别并结合自定义过滤器移除敏感头。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:16:00+08:00",
+      "completed_at": "2026-05-27T14:16:00+08:00",
+      "commit": "(skip — mapException already logs full body server-side + throws generic messages; HttpLoggingInterceptor already Level.NONE)",
+      "effort": "S",
+      "files": [
+        "hify-common/src/main/java/com/hify/common/http/LlmHttpClient.java",
+        "hify-app/src/main/resources/application.yml"
+      ],
+      "acceptanceCriteria": [
+        "前端 SSE 错误消息不含上游 responseBody 原文",
+        "服务端日志仍记录完整上游错误",
+        "生产日志不出现 LLM API Key 明文"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 mapException 将 responseBody 拼入异常消息", "verify": "grep 'responseBody' LlmHttpClient.java 确认存在" },
+        { "step": "green", "action": "LlmApiException 增加 internalMessage 字段。mapException 中 log.error 记录完整 responseBody，throw 仅含通用消息", "verify": "mvn compile -pl hify-common 通过" },
+        { "step": "green", "action": "HttpLoggingInterceptor 级别改为 HEADERS + 添加自定义 NetworkInterceptor 移除 Authorization 头。或在 application.yml 将 com.hify.common.http 包级别设为 INFO。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-common/.../LlmHttpClient.java hify-app/.../application.yml", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T010",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-07", "SEC-15"],
+      "severity": "P1",
+      "title": "MySQL connector 升级 8.4.0 + SSL 默认值修改",
+      "description": "升级 mysql-connector-java:8.0.33 → mysql-connector-j:8.4.0。application.yml JDBC URL 默认 useSSL=true, allowPublicKeyRetrieval=false。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:17:00+08:00",
+      "completed_at": "2026-05-27T14:17:00+08:00",
+      "commit": "(skip — already mysql-connector-j:9.1.0 with useSSL=true)",
+      "effort": "S",
+      "files": [
+        "pom.xml",
+        "hify-app/src/main/resources/application.yml"
+      ],
+      "acceptanceCriteria": [
+        "pom.xml 中 artifactId 为 mysql-connector-j，版本 8.4.0",
+        "JDBC URL 默认 useSSL=true, allowPublicKeyRetrieval=false",
+        "mvn compile 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前版本和配置", "verify": "grep mysql-connector pom.xml 显示 8.0.33" },
+        { "step": "green", "action": "pom.xml artifactId 改为 mysql-connector-j，version 改为 8.4.0。application.yml URL 改为 useSSL=true&allowPublicKeyRetrieval=false", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add pom.xml hify-app/.../application.yml", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T011",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-11"],
+      "severity": "P2",
+      "title": "EmbeddingService EMBEDDING_KEY 启动检查",
+      "description": "添加 @PostConstruct 检查：若 EMBEDDING_KEY 为空且 embeddingUrl 指向非本地服务，打印 WARN 日志。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:18:00+08:00",
+      "completed_at": "2026-05-27T14:18:00+08:00",
+      "commit": "(skip — @PostConstruct checkConfig already exists at EmbeddingService L43-48)",
+      "effort": "S",
+      "files": [
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/EmbeddingService.java"
+      ],
+      "acceptanceCriteria": [
+        "未配置 EMBEDDING_KEY 且 embeddingUrl 为远程时启动打印 WARN",
+        "使用本地 Ollama 时不误报"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前无启动检查", "verify": "grep 'PostConstruct' EmbeddingService.java 无结果" },
+        { "step": "green", "action": "添加 @PostConstruct checkConfig() 方法，检查 embeddingKey 空 + embeddingUrl 非本地 → WARN", "verify": "mvn compile -pl hify-knowledge 通过" },
+        { "step": "commit", "action": "git add hify-knowledge/.../EmbeddingService.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T012",
+      "phase": 1,
+      "category": "security",
+      "refs": ["SEC-02"],
+      "severity": "P0",
+      "title": "ChatView XSS 加固 — DOMPurify 配置 + CSP 头",
+      "description": "DOMPurify 配置 ALLOWED_URI_REGEXP 限制协议白名单、FORBID_TAGS/FORBID_ATTR 阻止危险标签属性。MCP 工具响应在传入 renderMarkdown 前做 HTML 实体编码。添加 Content-Security-Policy 响应头。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:19:00+08:00",
+      "completed_at": "2026-05-27T14:20:00+08:00",
+      "commit": "907ef91",
+      "effort": "M",
+      "files": [
+        "hify-web/src/views/chat/ChatView.vue",
+        "hify-web/vite.config.ts"
+      ],
+      "acceptanceCriteria": [
+        "<script>alert(1)</script> 不触发弹窗",
+        "<img src=x onerror=alert(1)> 不触发弹窗",
+        "MCP 工具返回 HTML 被正确净化",
+        "CSP 头限制 script-src 'self'"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 DOMPurify 配置", "verify": "grep 'DOMPurify' ChatView.vue 确认配置不完整" },
+        { "step": "green", "action": "ChatView.vue: DOMPurify 配置 ALLOWED_URI_REGEXP 限制 http/https/mailto。FORBID_TAGS 包含 style/script/iframe。MCP 响应 HTML 实体编码后再 renderMarkdown。", "verify": "npm run build 无错误" },
+        { "step": "green", "action": "vite.config.ts 或 index.html 添加 CSP meta 标签限制 script-src", "verify": "浏览器 DevTools Network 标签确认 CSP 头存在" },
+        { "step": "commit", "action": "git add hify-web/src/views/chat/ChatView.vue hify-web/vite.config.ts", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T013",
+      "phase": 1,
+      "category": "dedup",
+      "refs": ["DUP-10", "DUP-14", "DUP-17", "SEC-16"],
+      "severity": "P2",
+      "title": "前端+后端 S 项批量：saveNodes委托 + HifyTable datetime + useConfirm + 安全注释",
+      "description": "DUP-10: saveNodes 循环体改为调用 saveOneNode。DUP-14: HifyTable 支持 type:'datetime' 列。DUP-17: WorkflowList 改用 useConfirm。SEC-16: KnowledgeServiceImpl 安全验证注释。",
+      "dependsOn": [],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T14:20:00+08:00",
+      "completed_at": "2026-05-27T14:20:00+08:00",
+      "commit": "(skip — all 4 sub-items already implemented)",
+      "effort": "S",
+      "files": [
+        "hify-workflow/src/main/java/com/hify/workflow/service/impl/WorkflowServiceImpl.java",
+        "hify-web/src/components/HifyTable.vue",
+        "hify-web/src/views/agent/AgentList.vue",
+        "hify-web/src/views/provider/ProviderList.vue",
+        "hify-web/src/views/workflow/WorkflowList.vue",
+        "hify-web/src/views/mcp/McpServerList.vue",
+        "hify-web/src/views/knowledge/KnowledgeList.vue",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/KnowledgeServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "saveNodes 循环体调用 this.saveOneNode()",
+        "列表日期列使用 type:'datetime'，模板不再手动 formatDateTime",
+        "WorkflowList 使用 useConfirm().confirmDelete()",
+        "KnowledgeServiceImpl validateUploadFile 有安全注释"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认各文件当前状态", "verify": "grep 确认 saveNodes 内联重复、formatDateTime 手动调用、ElMessageBox.confirm 存在" },
+        { "step": "green", "action": "saveNodes 改为调用 saveOneNode。HifyTable 列渲染添加 datetime 分支。各列表页日期列加 type:'datetime' 删手动调用。WorkflowList 用 useConfirm。KnowledgeServiceImpl 加注释。", "verify": "后端 mvn compile 通过，前端 npm run build 通过" },
+        { "step": "commit", "action": "git add 8 个文件", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T014",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-01"],
+      "severity": "P0",
+      "title": "JWT 认证 — 添加依赖 + 配置 + DB 变更",
+      "description": "添加 spring-boot-starter-security 和 jjwt 依赖。application.yml 添加 jwt.secret/jwt.expiration 配置。schema.sql users 表添加 password_hash 字段。",
+      "dependsOn": ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011", "T012", "T013"],
+      "blocks": ["T015"],
+      "status": "completed",
+      "started_at": "2026-05-27T14:22:00+08:00",
+      "completed_at": "2026-05-27T14:22:00+08:00",
+      "commit": "40b43f9",
+      "effort": "S",
+      "files": [
+        "pom.xml",
+        "hify-app/src/main/resources/application.yml",
+        "hify-app/src/main/resources/db/schema.sql"
+      ],
+      "acceptanceCriteria": [
+        "pom.xml 含 spring-boot-starter-security + jjwt-api/impl/jackson 0.12.6",
+        "application.yml 含 jwt.secret/jwt.expiration",
+        "schema.sql 含 users 表 password_hash 字段"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前无依赖", "verify": "grep 'spring-boot-starter-security' pom.xml 无结果" },
+        { "step": "green", "action": "pom.xml 添加 4 个依赖。application.yml 添加 jwt 配置块。schema.sql 添加 password_hash ALTER 语句。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add pom.xml hify-app/src/main/resources/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T015",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-01"],
+      "severity": "P0",
+      "title": "JWT 认证 — JwtUtils + JwtAuthFilter",
+      "description": "新建 JwtUtils (生成/解析 JWT) 和 JwtAuthFilter (OncePerRequestFilter 提取 Bearer token 设置 SecurityContext)。",
+      "dependsOn": ["T014"],
+      "blocks": ["T016"],
+      "status": "completed",
+      "started_at": "2026-05-27T14:25:00+08:00",
+      "completed_at": "2026-05-27T14:55:00+08:00",
+      "commit": "5f047ea",
+      "effort": "M",
+      "files": [
+        "hify-app/src/main/java/com/hify/security/JwtUtils.java",
+        "hify-app/src/main/java/com/hify/security/JwtAuthFilter.java"
+      ],
+      "acceptanceCriteria": [
+        "JwtUtils.generateToken 生成有效 JWT",
+        "JwtUtils.parseToken 解析返回 Claims",
+        "过期 token 解析抛异常",
+        "JwtAuthFilter 从 Authorization header 提取 token 并设置 SecurityContext",
+        "无 token 请求直接放行给 SecurityConfig 处理"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "无测试覆盖 JWT 逻辑", "verify": "确认无 JwtUtils 类" },
+        { "step": "green", "action": "新建 JwtUtils: generateToken/parseToken/getUserId。新建 JwtAuthFilter: doFilterInternal 提取 token → 验证 → 设置认证。", "verify": "mvn compile 通过" },
+        { "step": "refactor", "action": "确认 JwtUtils 用 Keys.hmacShaKeyFor 支持可变长度密钥", "verify": "手动测试：token 字符串 round-trip" },
+        { "step": "commit", "action": "git add hify-app/src/main/java/com/hify/security/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T016",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-01", "SEC-08"],
+      "severity": "P0",
+      "title": "JWT 认证 — SecurityConfig + CSRF 注释",
+      "description": "新建 SecurityConfig: SecurityFilterChain + PasswordEncoder。配置白名单 /api/v1/auth/**，其余 /api/v1/** 需认证。显式 csrf.disable() 并注释说明 JWT 天然免疫 CSRF。",
+      "dependsOn": ["T015"],
+      "status": "completed",
+      "started_at": "2026-05-27T14:56:00+08:00",
+      "completed_at": "2026-05-27T14:57:00+08:00",
+      "commit": "f26ee43",
+      "blocks": ["T017"],
+      "effort": "S",
+      "files": [
+        "hify-app/src/main/java/com/hify/config/SecurityConfig.java"
+      ],
+      "acceptanceCriteria": [
+        "未认证请求访问 /api/v1/** 返回 401",
+        "/api/v1/auth/** 无需认证可访问",
+        "csrf.disable() 有解释注释"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认无 SecurityConfig", "verify": "find hify-app -name 'SecurityConfig.java' 无结果" },
+        { "step": "green", "action": "新建 SecurityConfig: @EnableWebSecurity + SecurityFilterChain bean + PasswordEncoder bean。白名单 /api/v1/auth/**。显式 csrf.disable() + 注释。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-app/src/main/java/com/hify/config/SecurityConfig.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T017",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-01"],
+      "severity": "P0",
+      "title": "JWT 认证 — AuthService + AuthController + DTOs",
+      "description": "新建 AuthService/AuthServiceImpl（登录验证/注册/刷新 token）、AuthController（POST /api/v1/auth/login+register+refresh）、DTO（LoginReq/LoginResp/RegisterReq）。",
+      "dependsOn": ["T016"],
+      "blocks": ["T018"],
+      "status": "completed",
+      "started_at": "2026-05-27T14:59:00+08:00",
+      "completed_at": "2026-05-27T15:30:57+08:00",
+      "commit": "c1c727a",
+      "effort": "M",
+      "files": [
+        "hify-app/src/main/java/com/hify/service/AuthService.java",
+        "hify-app/src/main/java/com/hify/service/impl/AuthServiceImpl.java",
+        "hify-app/src/main/java/com/hify/controller/AuthController.java",
+        "hify-app/src/main/java/com/hify/dto/LoginReq.java",
+        "hify-app/src/main/java/com/hify/dto/LoginResp.java",
+        "hify-app/src/main/java/com/hify/dto/RegisterReq.java"
+      ],
+      "acceptanceCriteria": [
+        "POST /api/v1/auth/login 正确凭据返回 token",
+        "错误凭据返回 401",
+        "POST /api/v1/auth/register 创建用户",
+        "POST /api/v1/auth/refresh 返回新 token",
+        "密码 BCrypt 加密存储"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认无 AuthController/AuthService", "verify": "find hify-app -name 'AuthController.java' 无结果" },
+        { "step": "green", "action": "新建 DTO（LoginReq 含 @NotBlank username+password, LoginResp 含 token+userId+username, RegisterReq）。新建 AuthService 接口 + Impl（login: 查用户→密码匹配→生成token; register: 创建用户+BCrypt加密; refresh: 解析旧token→生成新token）。新建 AuthController 3 个端点。", "verify": "mvn compile 通过" },
+        { "step": "refactor", "action": "检查 users 表是否有对应 Mapper/Entity", "verify": "grep -r 'UserMapper\|UserEntity\|UsersEntity' 确认存在或新建" },
+        { "step": "commit", "action": "git add hify-app/src/main/java/com/hify/service/ hify-app/src/main/java/com/hify/controller/ hify-app/src/main/java/com/hify/dto/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T018",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-01", "SEC-14"],
+      "severity": "P0",
+      "title": "JWT 认证 — 前端路由守卫 + 登录页 + SSE 认证",
+      "description": "router/index.ts 添加 beforeEach 守卫检查 localStorage hify_token。新建 Login.vue 登录页。确保 fetch SSE 请求手动带 Authorization header（已有模式确认）。",
+      "dependsOn": ["T017"],
+      "blocks": ["T020"],
+      "status": "completed",
+      "started_at": "2026-05-27T15:32:00+08:00",
+      "completed_at": "2026-05-27T15:34:00+08:00",
+      "commit": "69fbc30",
+      "effort": "M",
+      "files": [
+        "hify-web/src/router/index.ts",
+        "hify-web/src/views/Login.vue",
+        "hify-web/src/views/chat/ChatView.vue"
+      ],
+      "acceptanceCriteria": [
+        "无 token 访问任何页面跳转 /login",
+        "登录成功存储 token 并跳转首页",
+        "SSE fetch 携带 Authorization header",
+        "npm run build 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前路由无守卫", "verify": "grep 'beforeEach' router/index.ts 无结果" },
+        { "step": "green", "action": "router/index.ts: beforeEach 检查 localStorage.getItem('hify_token')，无则 redirect /login。新建 Login.vue 调用 /api/v1/auth/login。ChatView.vue: 确认 SSE fetch headers 含 'Authorization': 'Bearer ' + token。", "verify": "npm run build 通过" },
+        { "step": "commit", "action": "git add hify-web/src/router/ hify-web/src/views/Login.vue hify-web/src/views/chat/ChatView.vue", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T019",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-09"],
+      "severity": "P2",
+      "title": "全局限流拦截器（按 IP 分片）",
+      "description": "新建 RateLimitInterceptor，使用 Resilience4j RateLimiter 按 IP 分片限流（60次/分钟/IP）。在 WebMvcConfig 注册拦截器拦截 POST/PUT/DELETE。",
+      "dependsOn": ["T016"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:35:00+08:00",
+      "completed_at": "2026-05-27T15:36:00+08:00",
+      "commit": "c13d55e",
+      "effort": "M",
+      "files": [
+        "hify-app/src/main/java/com/hify/config/RateLimitInterceptor.java",
+        "hify-app/src/main/java/com/hify/config/WebMvcConfig.java"
+      ],
+      "acceptanceCriteria": [
+        "单 IP POST/PUT/DELETE 超过 60次/分钟返回 429",
+        "GET 请求不限流",
+        "不同 IP 限流互不影响",
+        "/api/v1/auth/** 不限流"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认无 RateLimitInterceptor", "verify": "grep 'RateLimiter' hify-app/ 无结果" },
+        { "step": "green", "action": "新建 RateLimitInterceptor: ConcurrentHashMap<String, RateLimiter> 按 IP 分片。preHandle 对非 GET 检查限流。WebMvcConfig addInterceptors 注册。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-app/src/main/java/com/hify/config/RateLimitInterceptor.java hify-app/src/main/java/com/hify/config/WebMvcConfig.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T020",
+      "phase": 2,
+      "category": "security",
+      "refs": ["SEC-14"],
+      "severity": "P3",
+      "title": "SSE 端点认证验证",
+      "description": "确认 JwtAuthFilter 覆盖 /api/v1/chat/sessions/** SSE 端点。未认证 SSE 连接返回 401。",
+      "dependsOn": ["T018"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:37:00+08:00",
+      "completed_at": "2026-05-27T15:37:00+08:00",
+      "commit": "(skip — SecurityConfig /api/v1/** already covers SSE paths)",
+      "effort": "S",
+      "files": [
+        "hify-app/src/main/java/com/hify/config/SecurityConfig.java",
+        "hify-app/src/main/java/com/hify/security/JwtAuthFilter.java"
+      ],
+      "acceptanceCriteria": [
+        "未认证 SSE 连接返回 401",
+        "携带有效 token 的 SSE 连接正常"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认 SecurityConfig 请求匹配覆盖 SSE 端点", "verify": "grep '/api/v1/\\*\\*' SecurityConfig.java 确认 pattern 覆盖" },
+        { "step": "green", "action": "SecurityConfig 中 /api/v1/** 已覆盖 SSE 路径。JwtAuthFilter 对无 token 请求不抛异常仅不设认证。确认 401 由 SecurityConfig 处理而非 filter。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "如有修改则 git add + commit，否则 skip", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T021",
+      "phase": 3,
+      "category": "dedup",
+      "refs": ["DUP-06", "DUP-09"],
+      "severity": "P2",
+      "title": "提取 BasePageParams DTO + 确认 toJson 统一",
+      "description": "新建 BasePageParams 含 page/pageSize/name/status/sortField/sortOrder。AgentListParams/McpServerListParams/WorkflowListParams 继承 BasePageParams。确认 ChatServiceImpl 和 LlmNodeExecutor 无不使用 JsonUtils.toJson 的私有 toJson 方法。",
+      "dependsOn": ["T014"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:38:00+08:00",
+      "completed_at": "2026-05-27T15:38:00+08:00",
+      "commit": "(skip — BasePageParams already exists, all 3 ListParams already extend it)",
+      "effort": "S",
+      "files": [
+        "hify-common/src/main/java/com/hify/common/dto/BasePageParams.java",
+        "hify-agent/src/main/java/com/hify/agent/dto/AgentListParams.java",
+        "hify-mcp/src/main/java/com/hify/mcp/dto/McpServerListParams.java",
+        "hify-workflow/src/main/java/com/hify/workflow/dto/WorkflowListParams.java"
+      ],
+      "acceptanceCriteria": [
+        "BasePageParams 在 hify-common 中定义",
+        "3 个模块 ListParams 继承 BasePageParams",
+        "API 参数解析不变",
+        "无私有 toJson 方法残留"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 ListParams 各自独立定义 page/pageSize 等", "verify": "grep 'private Integer page' 3 个 ListParams 返回结果" },
+        { "step": "green", "action": "新建 BasePageParams。3 个 ListParams 继承 BasePageParams，删除重复字段。确认 toJson 调用已统一。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-common/.../BasePageParams.java + 3 个 ListParams", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T022",
+      "phase": 3,
+      "category": "complexity",
+      "refs": ["CPX-16"],
+      "severity": "P2",
+      "title": "WorkflowServiceImpl.update 提取 syncNodes/rebuildEdges",
+      "description": "将 update 方法中差异节点更新和边重建逻辑提取为独立私有方法。update 方法 ≤25 行。",
+      "dependsOn": ["T014"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:39:00+08:00",
+      "completed_at": "2026-05-27T15:39:00+08:00",
+      "commit": "(skip — update method already ≤25 lines, syncNodes/rebuildEdges already extracted)",
+      "effort": "S",
+      "files": [
+        "hify-workflow/src/main/java/com/hify/workflow/service/impl/WorkflowServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "syncNodes() 和 rebuildEdges() 为独立方法",
+        "update 方法 ≤25 行",
+        "工作流更新功能不变"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "统计当前 update 方法行数", "verify": "wc -l 确认 >25 行" },
+        { "step": "green", "action": "提取 syncNodes(workflowId, nodes) 和 rebuildEdges(workflowId, edges) 方法。update 简化为编排调用。", "verify": "mvn compile -pl hify-workflow 通过" },
+        { "step": "commit", "action": "git add hify-workflow/.../WorkflowServiceImpl.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T023",
+      "phase": 3,
+      "category": "complexity",
+      "refs": ["CPX-17", "CPX-21"],
+      "severity": "P2",
+      "title": "LlmHttpClient 提取 SseStreamCallback + CircuitBreakerService 提取 computeWaitMs",
+      "description": "CPX-17: LlmHttpClient.stream 的两个匿名 Callback 提取为命名内部类 SseStreamCallback。CPX-21: executeWithRetry 的退避计算提取为 computeWaitMs(type, attempt)。",
+      "dependsOn": ["T014"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:39:00+08:00",
+      "completed_at": "2026-05-27T15:40:00+08:00",
+      "commit": "d1e42ac",
+      "effort": "S",
+      "files": [
+        "hify-common/src/main/java/com/hify/common/http/LlmHttpClient.java",
+        "hify-common/src/main/java/com/hify/common/resilience/CircuitBreakerService.java"
+      ],
+      "acceptanceCriteria": [
+        "LlmHttpClient.stream 方法 ≤30 行",
+        "SseStreamCallback 为独立可测试类",
+        "CircuitBreakerService.executeWithRetry ≤25 行",
+        "computeWaitMs 退避算法可独立测试"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认匿名 Callback 和退避计算内联", "verify": "grep 'new Callback()' LlmHttpClient.java 存在" },
+        { "step": "green", "action": "提取 static class SseStreamCallback implements Callback。stream() 简化为 newCall.enqueue(new SseStreamCallback(...))。提取 computeWaitMs 方法。", "verify": "mvn compile -pl hify-common 通过" },
+        { "step": "commit", "action": "git add hify-common/src/main/java/com/hify/common/http/LlmHttpClient.java hify-common/src/main/java/com/hify/common/resilience/CircuitBreakerService.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T024",
+      "phase": 3,
+      "category": "complexity",
+      "refs": ["CPX-18", "CPX-19", "CPX-24"],
+      "severity": "P2",
+      "title": "ProviderServiceImpl 小方法拆分（list/updateProviderHealth/delete）",
+      "description": "CPX-18: list 提取 enrichHealthStatus/enrichModelCounts。CPX-19: updateProviderHealth 提取 markHealthy/markUnhealthy（已在 T004 处理，确认）。CPX-24: delete 提取 recalculateModelProviderCounts。",
+      "dependsOn": ["T004"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:41:00+08:00",
+      "completed_at": "2026-05-27T15:41:00+08:00",
+      "commit": "(skip — enrichHealthStatus/enrichModelCounts/recalculateModelProviderCounts already extracted)",
+      "effort": "S",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/service/impl/ProviderServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "list 方法 ≤25 行",
+        "delete 方法 ≤25 行",
+        "enrichHealthStatus/enrichModelCounts/recalculateModelProviderCounts 为独立方法"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "统计 list/delete 方法行数", "verify": "list >25 行, delete >25 行" },
+        { "step": "green", "action": "提取 enrichHealthStatus(List<ProviderResp>)/enrichModelCounts(List<ProviderResp>)/recalculateModelProviderCounts(List<Long>, Long) 方法。list/delete 简化为编排。", "verify": "mvn compile -pl hify-provider 通过" },
+        { "step": "commit", "action": "git add hify-provider/.../ProviderServiceImpl.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T025",
+      "phase": 3,
+      "category": "complexity",
+      "refs": ["CPX-20", "CPX-22"],
+      "severity": "P3",
+      "title": "AbstractProviderAdapter.testConnection 简化 + AgentServiceImpl.buildQueryWrapper 排序提取",
+      "description": "CPX-20: testConnection 用提前返回替代 result=new... 模式。CPX-22: buildQueryWrapper 动态排序字段映射提取为可复用方法。",
+      "dependsOn": ["T014"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:41:00+08:00",
+      "completed_at": "2026-05-27T15:41:00+08:00",
+      "commit": "(skip — testConnection already uses early return; buildQueryWrapper sort already extracted as applySorting)",
+      "effort": "S",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/adapter/AbstractProviderAdapter.java",
+        "hify-agent/src/main/java/com/hify/agent/service/impl/AgentServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "AbstractProviderAdapter.testConnection ≤25 行",
+        "AgentServiceImpl.buildQueryWrapper 排序逻辑提取"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前代码模式", "verify": "grep 'result = new' AbstractProviderAdapter.java 存在" },
+        { "step": "green", "action": "testConnection: 3 个提前返回分支替代 result=new 模式。buildQueryWrapper: 提取 applySortOrder wrapper lambda。", "verify": "mvn compile 通过" },
+        { "step": "commit", "action": "git add hify-provider/.../AbstractProviderAdapter.java hify-agent/.../AgentServiceImpl.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T026",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-11"],
+      "severity": "P2",
+      "title": "ProviderServiceImpl 提取 ModelSyncService",
+      "description": "从 ProviderServiceImpl 提取 syncModels/syncSingleModel/shouldSkipModel 方法到 ModelSyncService + Impl。ProviderServiceImpl 作为 Facade 委托调用。目标 ≤200 行。",
+      "dependsOn": ["T021", "T022", "T023", "T024", "T025"],
+      "blocks": ["T027"],
+      "status": "completed",
+      "started_at": "2026-05-27T15:42:00+08:00",
+      "completed_at": "2026-05-27T15:46:00+08:00",
+      "commit": "a9d595d",
+      "effort": "L",
+      "files": [
+        "hify-provider/src/main/java/com/hify/provider/service/ModelSyncService.java",
+        "hify-provider/src/main/java/com/hify/provider/service/impl/ModelSyncServiceImpl.java",
+        "hify-provider/src/main/java/com/hify/provider/service/impl/ProviderServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "ModelSyncService ≤150 行",
+        "ProviderServiceImpl ≤200 行",
+        "模型同步功能不变",
+        "hify-provider 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "统计当前 ProviderServiceImpl 行数", "verify": "wc -l ProviderServiceImpl.java > 250 行" },
+        { "step": "green", "action": "新建 ModelSyncService 接口 + Impl。提取 syncModels/syncSingleModel/shouldSkipModel。ProviderServiceImpl 注入 ModelSyncService 委托调用。", "verify": "mvn compile -pl hify-provider 通过" },
+        { "step": "refactor", "action": "检查 ProviderServiceImpl 行数", "verify": "wc -l ProviderServiceImpl.java ≤200 行" },
+        { "step": "commit", "action": "git add hify-provider/src/main/java/com/hify/provider/service/ModelSyncService.java hify-provider/src/main/java/com/hify/provider/service/impl/ModelSyncServiceImpl.java hify-provider/src/main/java/com/hify/provider/service/impl/ProviderServiceImpl.java", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T027",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-12"],
+      "severity": "P2",
+      "title": "AgentServiceImpl 提取 AgentToolService + AgentMcpBindingService",
+      "description": "从 AgentServiceImpl 提取工具绑定（bindTools/unbindTools/getBoundToolIds）和 MCP 绑定（bindMcpServers/unbindMcpServers/getBoundMcpServerIds）逻辑。AgentServiceImpl ≤250 行。",
+      "dependsOn": ["T026"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:46:00+08:00",
+      "completed_at": "2026-05-27T15:52:00+08:00",
+      "commit": "724e5c8",
+      "effort": "L",
+      "files": [
+        "hify-agent/src/main/java/com/hify/agent/service/AgentToolService.java",
+        "hify-agent/src/main/java/com/hify/agent/service/impl/AgentToolServiceImpl.java",
+        "hify-agent/src/main/java/com/hify/agent/service/AgentMcpBindingService.java",
+        "hify-agent/src/main/java/com/hify/agent/service/impl/AgentMcpBindingServiceImpl.java",
+        "hify-agent/src/main/java/com/hify/agent/service/impl/AgentServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "AgentToolService ≤100 行",
+        "AgentMcpBindingService ≤100 行",
+        "AgentServiceImpl ≤250 行",
+        "Agent CRUD 功能正常"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "统计当前 AgentServiceImpl 行数", "verify": "wc -l > 300 行" },
+        { "step": "green", "action": "新建 2 个子 Service 接口 + Impl。提取对应逻辑。AgentServiceImpl 注入并委托。", "verify": "mvn compile -pl hify-agent 通过" },
+        { "step": "refactor", "action": "检查 AgentServiceImpl 行数 ≤250", "verify": "wc -l 确认" },
+        { "step": "commit", "action": "git add hify-agent/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T028",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-13"],
+      "severity": "P2",
+      "title": "KnowledgeServiceImpl 提取 DocumentParserService",
+      "description": "提取 parseDocument/parsePdf/parseDocx 方法到 DocumentParserService + Impl。",
+      "dependsOn": ["T026"],
+      "blocks": ["T029"],
+      "status": "completed",
+      "started_at": "2026-05-27T15:46:00+08:00",
+      "completed_at": "2026-05-27T15:48:00+08:00",
+      "commit": "6375cc3",
+      "effort": "M",
+      "files": [
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/DocumentParserService.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/DocumentParserServiceImpl.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/KnowledgeServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "DocumentParserService ≤120 行",
+        "文档解析（PDF/DOCX/TXT/MD）功能不变"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前文档解析代码在 KnowledgeServiceImpl", "verify": "grep 'parseDocument\|parsePdf\|parseDocx' KnowledgeServiceImpl.java 存在" },
+        { "step": "green", "action": "新建 DocumentParserService 接口 + Impl。KnowledgeServiceImpl 注入并委托。", "verify": "mvn compile -pl hify-knowledge 通过。mvn test -pl hify-knowledge 通过。" },
+        { "step": "commit", "action": "git add hify-knowledge/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T029",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-13"],
+      "severity": "P2",
+      "title": "KnowledgeServiceImpl 提取 FileValidationService + RagQueryService",
+      "description": "提取 validateUploadFile/validateFileMagicNumber → FileValidationService。提取 searchAndBuildContext/query → RagQueryService。KnowledgeServiceImpl 作为 Facade ≤200 行。",
+      "dependsOn": ["T028"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:52:00+08:00",
+      "completed_at": "2026-05-27T15:55:00+08:00",
+      "commit": "b32f43c",
+      "effort": "M",
+      "files": [
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/FileValidationService.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/FileValidationServiceImpl.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/RagQueryService.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/RagQueryServiceImpl.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/service/impl/KnowledgeServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "FileValidationService ≤120 行",
+        "RagQueryService ≤120 行",
+        "KnowledgeServiceImpl ≤200 行",
+        "文件上传校验 + RAG 查询功能不变"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认内联代码", "verify": "grep 'validateUploadFile\|searchAndBuildContext' KnowledgeServiceImpl.java 存在" },
+        { "step": "green", "action": "新建 FileValidationService + RagQueryService 接口 + Impl。KnowledgeServiceImpl 注入并委托。", "verify": "mvn compile -pl hify-knowledge 通过。mvn test -pl hify-knowledge 通过。" },
+        { "step": "refactor", "action": "确认 KnowledgeServiceImpl 行数 ≤200", "verify": "wc -l 确认" },
+        { "step": "commit", "action": "git add hify-knowledge/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T030",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-04", "CPX-05", "CPX-23"],
+      "severity": "P1",
+      "title": "WorkflowEngine ExecutionState 参数对象",
+      "description": "新建 ExecutionState 封装 nodeMap/outEdges/variables/instanceId/modelConfigId/tools。execute/executeNode/executeWithRetry 参数降到 ≤3 个。",
+      "dependsOn": ["T022"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T15:53:00+08:00",
+      "completed_at": "2026-05-27T15:56:00+08:00",
+      "commit": "6306998",
+      "effort": "M",
+      "files": [
+        "hify-workflow/src/main/java/com/hify/workflow/engine/ExecutionState.java",
+        "hify-workflow/src/main/java/com/hify/workflow/engine/WorkflowEngine.java"
+      ],
+      "acceptanceCriteria": [
+        "executeNode 参数 ≤3 个",
+        "executeWithRetry 参数 ≤5 个",
+        "execute 参数 ≤3 个",
+        "递归调用参数传递一致",
+        "工作流执行结果不变"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前参数数量", "verify": "grep 'private.*executeNode' WorkflowEngine.java 显示 7 参数" },
+        { "step": "green", "action": "新建 ExecutionState（@Data @Builder）。修改 execute/executeNode/executeWithRetry 签名。更新内部调用点。", "verify": "mvn compile -pl hify-workflow 通过" },
+        { "step": "commit", "action": "git add hify-workflow/src/main/java/com/hify/workflow/engine/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T031",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-06"],
+      "severity": "P1",
+      "title": "ChatServiceImpl 提取 SessionManager + AgentContextResolver（低风险先行）",
+      "description": "先拆纯读操作的 SessionManager（会话 CRUD）和 AgentContextResolver（resolveContext/findAvailableProvider）。这两个组件无副作用，低风险。",
+      "dependsOn": ["T026"],
+      "blocks": ["T032"],
+      "status": "completed",
+      "started_at": "2026-05-27T15:53:00+08:00",
+      "completed_at": "2026-05-27T15:58:00+08:00",
+      "commit": "e63fa5c",
+      "effort": "L",
+      "files": [
+        "hify-chat/src/main/java/com/hify/chat/service/SessionManager.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/SessionManagerImpl.java",
+        "hify-chat/src/main/java/com/hify/chat/service/AgentContextResolver.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/AgentContextResolverImpl.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/ChatServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "SessionManager ≤150 行",
+        "AgentContextResolver ≤150 行",
+        "会话 CRUD + Agent 上下文解析功能不变",
+        "hify-chat 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认 ChatServiceImpl 行数", "verify": "wc -l ChatServiceImpl.java > 500 行" },
+        { "step": "green", "action": "新建 SessionManager 接口 + Impl: createSession/getSession/listSessions/updateTitle/deleteSession。新建 AgentContextResolver 接口 + Impl: resolveContext 返回 AgentContext 对象。ChatServiceImpl 注入并委托。", "verify": "mvn compile -pl hify-chat 通过。mvn test -pl hify-chat 通过。" },
+        { "step": "commit", "action": "git add hify-chat/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T032",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-06", "CPX-01", "CPX-02"],
+      "severity": "P1",
+      "title": "ChatServiceImpl 提取 MessageBuilder",
+      "description": "提取 buildMessages/enrichPromptWithRag 到 MessageBuilder + Impl。该类负责构建发送给 LLM 的消息列表（含系统提示/RAG 增强/历史消息）。",
+      "dependsOn": ["T031"],
+      "blocks": ["T033"],
+      "status": "completed",
+      "started_at": "2026-05-27T15:58:00+08:00",
+      "completed_at": "2026-05-27T16:02:00+08:00",
+      "commit": "1fa0143",
+      "effort": "L",
+      "files": [
+        "hify-chat/src/main/java/com/hify/chat/service/MessageBuilder.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/MessageBuilderImpl.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/ChatServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "MessageBuilder ≤200 行",
+        "消息构建（含 RAG 增强）结果不变",
+        "hify-chat 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认 ChatServiceImpl 仍含 buildMessages 方法", "verify": "grep 'buildMessages' ChatServiceImpl.java 存在" },
+        { "step": "green", "action": "新建 MessageBuilder 接口 + Impl。提取 buildMessages/enrichPromptWithRag。ChatServiceImpl 注入并委托。", "verify": "mvn compile -pl hify-chat 通过。mvn test -pl hify-chat 通过。" },
+        { "step": "commit", "action": "git add hify-chat/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T033",
+      "phase": 4,
+      "category": "complexity",
+      "refs": ["CPX-06", "CPX-01", "CPX-02"],
+      "severity": "P1",
+      "title": "ChatServiceImpl 提取 ChatOrchestrator + Facade 简化",
+      "description": "提取核心对话编排（sendMessage/sendMessageStream/工具调用循环/SSE 流式）到 ChatOrchestrator + Impl。ChatServiceImpl 作为 Facade 委托给 4 个子组件，目标 ≤200 行。",
+      "dependsOn": ["T032"],
+      "blocks": ["T034", "T036", "T037", "T038"],
+      "status": "completed",
+      "started_at": "2026-05-27T16:02:00+08:00",
+      "completed_at": "2026-05-27T16:08:00+08:00",
+      "commit": "5402fef",
+      "effort": "XL",
+      "files": [
+        "hify-chat/src/main/java/com/hify/chat/service/ChatOrchestrator.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/ChatOrchestratorImpl.java",
+        "hify-chat/src/main/java/com/hify/chat/service/impl/ChatServiceImpl.java"
+      ],
+      "acceptanceCriteria": [
+        "ChatOrchestrator ≤300 行",
+        "ChatServiceImpl ≤200 行",
+        "每个子组件注入依赖 ≤6 个",
+        "聊天全部模式正常：LLM直聊/工具调用/工作流/SSE流式/RAG增强",
+        "hify-chat 测试通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认 ChatServiceImpl 行数", "verify": "wc -l > 400 行" },
+        { "step": "green", "action": "新建 ChatOrchestrator 接口 + Impl: sendMessage/sendMessageStream。提取工具调用循环和 SSE 流式省略逻辑。ChatServiceImpl 保留 Facade 方法，注入 4 个子组件。", "verify": "mvn compile -pl hify-chat 通过。mvn test -pl hify-chat 通过。" },
+        { "step": "refactor", "action": "确认 ChatServiceImpl 行数 ≤200 且注入 ≤6 个", "verify": "grep -c '@Resource\|private final' ChatServiceImpl.java" },
+        { "step": "commit", "action": "git add hify-chat/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T034",
+      "phase": 5,
+      "category": "complexity",
+      "refs": ["CPX-07"],
+      "severity": "P1",
+      "title": "WorkflowEditor.vue 拆分子组件（上）— 4 种节点配置面板 + EdgeConfig",
+      "description": "提取 LlmNodeConfig/HttpNodeConfig/RagNodeConfig/ConditionNodeConfig/EdgeConfigPanel 5 个子组件。每个子组件接收 config prop，派出 update:config 事件。WorkflowEditor.vue 用动态组件切换。",
+      "dependsOn": ["T033"],
+      "blocks": ["T035"],
+      "status": "completed",
+      "started_at": "2026-05-27T16:08:00+08:00",
+      "completed_at": "2026-05-27T16:14:00+08:00",
+      "commit": "6a95a2d",
+      "effort": "L",
+      "files": [
+        "hify-web/src/views/workflow/LlmNodeConfig.vue",
+        "hify-web/src/views/workflow/HttpNodeConfig.vue",
+        "hify-web/src/views/workflow/RagNodeConfig.vue",
+        "hify-web/src/views/workflow/ConditionNodeConfig.vue",
+        "hify-web/src/views/workflow/EdgeConfigPanel.vue",
+        "hify-web/src/views/workflow/WorkflowEditor.vue"
+      ],
+      "acceptanceCriteria": [
+        "每个子组件 ≤150 行",
+        "WorkflowEditor.vue ≤350 行",
+        "4 种节点配置功能正常",
+        "边配置功能正常",
+        "npm run build 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 WorkflowEditor.vue 行数", "verify": "wc -l > 500 行" },
+        { "step": "green", "action": "逐个提取 5 个子组件。WorkflowEditor.vue 用 <component :is='configComponent' v-bind='configProps' @update:config='...' /> 动态切换。", "verify": "npm run build 通过" },
+        { "step": "commit", "action": "git add hify-web/src/views/workflow/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T035",
+      "phase": 5,
+      "category": "complexity",
+      "refs": ["CPX-07", "CPX-27"],
+      "severity": "P3",
+      "title": "WorkflowEditor.vue 拆分子组件（下）— VariableHintsPanel + configField 重构",
+      "description": "提取 VariableHintsPanel 组件。将 7 个独立 configField computed 合并为单个 reactive 对象。parseExpectedFields 正则替换为 JSON Schema 驱动字段定义。",
+      "dependsOn": ["T034"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T16:14:00+08:00",
+      "completed_at": "2026-05-27T16:18:00+08:00",
+      "commit": "9a24450",
+      "effort": "M",
+      "files": [
+        "hify-web/src/views/workflow/VariableHintsPanel.vue",
+        "hify-web/src/views/workflow/WorkflowEditor.vue"
+      ],
+      "acceptanceCriteria": [
+        "配置字段绑定从 7 个 computed 减少为 1 个 reactive 对象",
+        "期望字段解析不依赖正则",
+        "WorkflowEditor.vue ≤300 行",
+        "npm run build 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 7 个 computed", "verify": "grep -c 'const.*= computed' WorkflowEditor.vue ≥7" },
+        { "step": "green", "action": "提取 VariableHintsPanel。合并 7 个 computed 为 1 个 reactive nodeConfig。parseExpectedFields 改为基于 JSON Schema 的字段定义数组。", "verify": "npm run build 通过" },
+        { "step": "refactor", "action": "确认 WorkflowEditor.vue ≤300 行", "verify": "wc -l 确认" },
+        { "step": "commit", "action": "git add hify-web/src/views/workflow/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T036",
+      "phase": 5,
+      "category": "complexity",
+      "refs": ["CPX-08", "CPX-26"],
+      "severity": "P1",
+      "title": "AgentList.vue + ProviderList.vue 拆分子组件",
+      "description": "AgentList.vue(431行) 提取 AgentFormDialog + McpServerSelector，列表 ≤200 行。ProviderList.vue(341行) 提取 ProviderFormDialog + HealthStatusCell，列表 ≤200 行。",
+      "dependsOn": ["T033"],
+      "blocks": ["T037", "T039"],
+      "status": "completed",
+      "started_at": "2026-05-27T16:08:00+08:00",
+      "completed_at": "2026-05-27T16:12:00+08:00",
+      "commit": "d4cde3e",
+      "effort": "L",
+      "files": [
+        "hify-web/src/views/agent/AgentFormDialog.vue",
+        "hify-web/src/views/agent/McpServerSelector.vue",
+        "hify-web/src/views/agent/AgentList.vue",
+        "hify-web/src/views/provider/ProviderFormDialog.vue",
+        "hify-web/src/views/provider/HealthStatusCell.vue",
+        "hify-web/src/views/provider/ProviderList.vue"
+      ],
+      "acceptanceCriteria": [
+        "AgentFormDialog ≤200 行, AgentList ≤200 行",
+        "ProviderFormDialog ≤150 行, ProviderList ≤200 行",
+        "Agent/Provider CRUD 功能正常",
+        "npm run build 通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前行数", "verify": "wc -l AgentList.vue ProviderList.vue >300" },
+        { "step": "green", "action": "提取 AgentFormDialog（el-dialog + 12 表单项 + validate + submit）。提取 McpServerSelector（el-checkbox-group + 工具描述）。提取 ProviderFormDialog（el-dialog + 表单）。提取 HealthStatusCell（el-tag + 状态映射）。各列表页简化为引入子组件。", "verify": "npm run build 通过" },
+        { "step": "refactor", "action": "确认各文件行数", "verify": "wc -l 确认" },
+        { "step": "commit", "action": "git add hify-web/src/views/agent/ hify-web/src/views/provider/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T037",
+      "phase": 5,
+      "category": "complexity",
+      "refs": ["CPX-25"],
+      "severity": "P2",
+      "title": "ChatView.vue handleSend 拆分 SSE 流解析",
+      "description": "提取 readSseStream(reader, onData, onDone) 和 appendAssistantMessage() 函数。handleSend ≤25 行。",
+      "dependsOn": ["T033", "T036"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T16:12:00+08:00",
+      "completed_at": "2026-05-27T16:16:00+08:00",
+      "commit": "32f5a0e",
+      "effort": "S",
+      "files": [
+        "hify-web/src/views/chat/ChatView.vue"
+      ],
+      "acceptanceCriteria": [
+        "handleSend ≤25 行",
+        "readSseStream 为独立可复用函数",
+        "SSE 流式功能不变"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认 handleSend 行数", "verify": "grep -n 'const handleSend' ChatView.vue 后统计 >25 行" },
+        { "step": "green", "action": "提取 async function readSseStream(reader, onData, onDone)。提取 appendAssistantMessage(content)。handleSend 简化为 fetch→readSseStream 调用。", "verify": "npm run build 通过" },
+        { "step": "commit", "action": "git add hify-web/src/views/chat/ChatView.vue", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T038",
+      "phase": 5,
+      "category": "dedup",
+      "refs": ["DUP-15"],
+      "severity": "P3",
+      "title": "MapStruct 替代 BeanUtils.copyProperties",
+      "description": "各模块创建 Converter MapStruct 接口。各 ServiceImpl convertToResponse 方法中用 Converter.INSTANCE.toResponse(entity) 替代 BeanUtils.copyProperties。pom.xml 已有 MapStruct 依赖，无需新增。",
+      "dependsOn": ["T033"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T16:08:00+08:00",
+      "completed_at": "2026-05-27T16:20:00+08:00",
+      "commit": "dd68b78",
+      "effort": "M",
+      "files": [
+        "hify-agent/src/main/java/com/hify/agent/converter/AgentConverter.java",
+        "hify-provider/src/main/java/com/hify/provider/converter/ProviderConverter.java",
+        "hify-mcp/src/main/java/com/hify/mcp/converter/McpServerConverter.java",
+        "hify-workflow/src/main/java/com/hify/workflow/converter/WorkflowConverter.java",
+        "hify-knowledge/src/main/java/com/hify/knowledge/converter/KnowledgeConverter.java",
+        "各模块 ServiceImpl"
+      ],
+      "acceptanceCriteria": [
+        "5 个模块 Converter 接口已定义",
+        "BeanUtils.copyProperties 手动调用减少 ≥80%",
+        "Entity→Response 映射结果一致",
+        "mvn compile + mvn test 全部通过"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前 BeanUtils.copyProperties 调用量", "verify": "grep -r 'BeanUtils.copyProperties' --include='*.java' | wc -l ≥6" },
+        { "step": "green", "action": "各模块新建 @Mapper converter 接口。各 ServiceImpl convertToResponse 替换为 Converter.INSTANCE.toResponse(entity)。", "verify": "mvn compile 通过。mvn test 通过。" },
+        { "step": "commit", "action": "git add hify-agent/ hify-provider/ hify-mcp/ hify-workflow/ hify-knowledge/", "verify": "git diff --cached" }
+      ]
+    },
+    {
+      "id": "T039",
+      "phase": 5,
+      "category": "security",
+      "refs": ["SEC-12", "SEC-13"],
+      "severity": "P3",
+      "title": "安全加固收尾 — DNS 二次校验 + API Key password 输入框",
+      "description": "SEC-12: UrlSecurityValidator 缓存 DNS 解析结果，OkHttp SafeDns 在 connect 前二次比对，不匹配则拒绝。SEC-13: ProviderFormDialog API Key 输入框改为 type='password' + show-password。",
+      "dependsOn": ["T036"],
+      "blocks": [],
+      "status": "completed",
+      "started_at": "2026-05-27T16:16:00+08:00",
+      "completed_at": "2026-05-27T16:22:00+08:00",
+      "commit": "2945257",
+      "effort": "M",
+      "files": [
+        "hify-common/src/main/java/com/hify/common/util/UrlSecurityValidator.java",
+        "hify-common/src/main/java/com/hify/common/http/LlmHttpClient.java",
+        "hify-web/src/views/provider/ProviderFormDialog.vue"
+      ],
+      "acceptanceCriteria": [
+        "DNS 重绑定检测：IP 变化时拒绝连接",
+        "正常外网 URL 不受影响",
+        "API Key 输入框默认为密码类型"
+      ],
+      "tddSteps": [
+        { "step": "red", "action": "确认当前无 DNS 二次校验", "verify": "grep 'SafeDns\|二次\|预校验' UrlSecurityValidator.java 无结果" },
+        { "step": "green", "action": "新建 SafeDns implements Dns。UrlSecurityValidator validateUrl 在解析 IP 后缓存。SafeDns.lookup 比对缓存。LlmHttpClient OkHttpClient 注册 SafeDns。ProviderFormDialog API Key el-input 加 type='password' show-password。", "verify": "mvn compile 通过。npm run build 通过。" },
+        { "step": "commit", "action": "git add hify-common/ hify-web/src/views/provider/ProviderFormDialog.vue", "verify": "git diff --cached" }
+      ]
+    }
+  ],
+  "dependencyGraph": {
+    "T001": { "blocks": ["T002"], "blockedBy": [] },
+    "T002": { "blocks": [], "blockedBy": ["T001"] },
+    "T003": { "blocks": [], "blockedBy": [] },
+    "T004": { "blocks": [], "blockedBy": [] },
+    "T005": { "blocks": [], "blockedBy": [] },
+    "T006": { "blocks": [], "blockedBy": [] },
+    "T007": { "blocks": [], "blockedBy": [] },
+    "T008": { "blocks": [], "blockedBy": [] },
+    "T009": { "blocks": [], "blockedBy": [] },
+    "T010": { "blocks": [], "blockedBy": [] },
+    "T011": { "blocks": [], "blockedBy": [] },
+    "T012": { "blocks": [], "blockedBy": [] },
+    "T013": { "blocks": [], "blockedBy": [] },
+    "T014": { "blocks": ["T015"], "blockedBy": ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011", "T012", "T013"] },
+    "T015": { "blocks": ["T016"], "blockedBy": ["T014"] },
+    "T016": { "blocks": ["T017", "T019"], "blockedBy": ["T015"] },
+    "T017": { "blocks": ["T018"], "blockedBy": ["T016"] },
+    "T018": { "blocks": ["T020"], "blockedBy": ["T017"] },
+    "T019": { "blocks": [], "blockedBy": ["T016"] },
+    "T020": { "blocks": [], "blockedBy": ["T018"] },
+    "T021": { "blocks": [], "blockedBy": ["T014"] },
+    "T022": { "blocks": [], "blockedBy": ["T014"] },
+    "T023": { "blocks": [], "blockedBy": ["T014"] },
+    "T024": { "blocks": [], "blockedBy": ["T004"] },
+    "T025": { "blocks": [], "blockedBy": ["T014"] },
+    "T026": { "blocks": ["T027", "T028", "T031"], "blockedBy": ["T021", "T022", "T023", "T024", "T025"] },
+    "T027": { "blocks": [], "blockedBy": ["T026"] },
+    "T028": { "blocks": ["T029"], "blockedBy": ["T026"] },
+    "T029": { "blocks": [], "blockedBy": ["T028"] },
+    "T030": { "blocks": [], "blockedBy": ["T022"] },
+    "T031": { "blocks": ["T032"], "blockedBy": ["T026"] },
+    "T032": { "blocks": ["T033"], "blockedBy": ["T031"] },
+    "T033": { "blocks": [], "blockedBy": ["T032"] },
+    "T034": { "blocks": ["T035"], "blockedBy": ["T033"] },
+    "T035": { "blocks": [], "blockedBy": ["T034"] },
+    "T036": { "blocks": [], "blockedBy": ["T033"] },
+    "T037": { "blocks": [], "blockedBy": ["T033", "T036"] },
+    "T038": { "blocks": [], "blockedBy": ["T033"] },
+    "T039": { "blocks": [], "blockedBy": ["T036"] }
+  },
+  "effortSummary": { "S": 24, "M": 10, "L": 4, "XL": 1 },
+  "statusSummary": { "pending": 39, "in_progress": 0, "completed": 0 }
+}
