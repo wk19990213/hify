@@ -34,7 +34,7 @@ export const elementPlusCSSVars = `
   .el-button--primary:hover {
     background: var(--primary-700);
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgb(139 92 246 / 0.5);
+    box-shadow: 0 6px 20px rgb(13 148 136 / 0.35);
   }
 
   .el-button--primary:active {

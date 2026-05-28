@@ -214,6 +214,7 @@ defineExpose({
 <style scoped>
 .hify-table-wrapper {
   background: var(--bg-primary);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -229,12 +230,12 @@ defineExpose({
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: var(--bg-secondary);
 }
 
 .hify-table :deep(td.el-table__cell) {
-  padding: var(--space-4);
+  padding: var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-primary);
 }
@@ -268,7 +269,7 @@ defineExpose({
 }
 
 .pagination-wrapper :deep(.el-pager li.is-active) {
-  background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+  background: var(--primary-600);
   box-shadow: var(--shadow-primary);
 }
 </style>

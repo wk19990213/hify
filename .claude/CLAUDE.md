@@ -57,6 +57,7 @@ deploy/          # Docker + K8s 部署
 
 - 死代码清理后可能遗留缺失 import（如 `KnowledgeServiceImpl` 缺少 `ProviderMapper`/`ProviderModelMapper` 导入），编译时检查
 - 跨模块依赖需先在依赖模块执行 `mvn install -DskipTests`，否则找不到类
+- **MapStruct 增量编译产生损坏的 class 文件**：注解处理器生成 `*Impl.java` 时，同模块的 Entity/DTO 源文件可能尚未编译完成，导致生成的 `.class` 嵌入"Unresolved compilation problems"。运行时表现为 `NoClassDefFoundError: Could not initialize class XxxConverter`（`ExceptionInInitializerError`）。**修复**：`find . -name target -type d -maxdepth 3 -exec rm -rf {} +` 删除全部 target 后 `mvn install -DskipTests` 完整重编。
 
 ## 编码速查
 
@@ -65,6 +66,10 @@ deploy/          # Docker + K8s 部署
 - MyBatis-Plus `@TableLogic` 自动处理 deleted=0，`.last()` 禁用
 - 线程池必须自定义参数，禁止 `Executors`
 - 日志用 SLF4J 占位符，禁止字符串拼接；异常日志必须带栈；敏感信息脱敏
+
+## Claude Code 插件陷阱
+
+- **安装插件后必须同步启用**：安装插件时，应同时在 `settings.json` 的 `enabledPlugins` 中写入 `"插件名@市场名": true`，这一步由 Claude 完成，不要留给用户手动操作。否则 SessionStart 等 hook 不会触发，插件形同虚设。
 
 ## 前端陷阱
 
