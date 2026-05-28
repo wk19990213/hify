@@ -26,12 +26,13 @@ export const elementPlusCSSVars = `
   }
 
   .el-button--primary {
-    background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+    background: var(--primary-600);
     border: none;
     box-shadow: var(--shadow-primary);
   }
 
   .el-button--primary:hover {
+    background: var(--primary-700);
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgb(139 92 246 / 0.5);
   }
@@ -198,7 +199,7 @@ export const elementPlusCSSVars = `
   }
 
   .el-pagination .el-pager li.is-active {
-    background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+    background: var(--primary-600);
     box-shadow: var(--shadow-primary);
   }
 

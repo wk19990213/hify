@@ -5,7 +5,9 @@ describe('route titles', () => {
   it('uses readable Chinese titles for main pages', () => {
     const titles = router.getRoutes().map(route => route.meta.title)
 
+    expect(titles).toContain('登录')
     expect(titles).toContain('概览')
+    expect(titles).toContain('设计系统')
     expect(titles).toContain('模型管理')
     expect(titles).toContain('Agent 管理')
     expect(titles).toContain('对话')
