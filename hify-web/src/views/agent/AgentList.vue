@@ -1,20 +1,17 @@
 <template>
   <div class="agent-list-page">
-    <div class="page-header">
-      <div class="header-left">
-        <h1 class="page-title">Agent 管理</h1>
-        <p class="page-desc">配置 AI Agent，绑定模型和工具</p>
-      </div>
-      <div class="header-right">
+    <PageHeader
+      title="Agent 管理"
+      description="配置 AI Agent，绑定模型和工具"
+    >
+      <template #actions>
         <el-button type="primary" :icon="Plus" @click="handleAdd">新增 Agent</el-button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <HifyTable ref="tableRef" :columns="columns" :api="fetchList" :show-pagination="true" empty-text="暂无 Agent 数据">
       <template #status="{ row }">
-        <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="light">
-          {{ row.status === 1 ? '启用' : '禁用' }}
-        </el-tag>
+        <StatusBadge :text="row.status === 1 ? '启用' : '禁用'" :status="row.status === 1 ? 'success' : 'info'" />
       </template>
       <template #modelConfigName="{ row }">{{ row.modelConfigName || '-' }}</template>
       <template #toolCount="{ row }">
@@ -24,9 +21,15 @@
       <template #temperature="{ row }">{{ row.temperature != null ? row.temperature : '-' }}</template>
       <template #action="{ row }">
         <div class="action-btns">
-          <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-          <el-button type="warning" link :icon="ChatDotRound" @click="handleChat(row)">对话</el-button>
-          <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+          <IconAction label="编辑" @click="handleEdit(row)">
+            <el-icon><Edit /></el-icon>
+          </IconAction>
+          <IconAction label="对话" @click="handleChat(row)">
+            <el-icon><ChatDotRound /></el-icon>
+          </IconAction>
+          <IconAction label="删除" @click="handleDelete(row)">
+            <el-icon><Delete /></el-icon>
+          </IconAction>
         </div>
       </template>
     </HifyTable>
@@ -39,6 +42,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Plus, Edit, Delete, ChatDotRound } from '@element-plus/icons-vue'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import IconAction from '@/components/IconAction.vue'
 import HifyTable, { type TableColumn } from '@/components/HifyTable.vue'
 import AgentFormDialog from './AgentFormDialog.vue'
 import type { McpServerOption } from './McpServerSelector.vue'
@@ -66,7 +72,6 @@ const tableRef = ref<any>(null)
 const dialogRef = ref<any>(null)
 const { confirmDelete } = useConfirm()
 
-// 下拉选项
 const modelOptions = ref<{ id: number; name: string }[]>([])
 const kbOptions = ref<{ id: number; name: string }[]>([])
 const workflowOptions = ref<{ id: number; name: string }[]>([])
@@ -89,13 +94,11 @@ onMounted(async () => {
   } catch { /* 获取选项失败，下拉框为空 */ }
 })
 
-// 新增
 const handleAdd = () => {
   dialogRef.value?.setDefaultData({ status: 1, temperature: 0.7, conversationMaxRounds: 20, sortOrder: 0 })
   dialogRef.value?.open()
 }
 
-// 编辑
 const handleEdit = (row: Agent) => {
   dialogRef.value?.open({
     id: row.id, name: row.name, code: row.code, description: row.description,
@@ -106,7 +109,6 @@ const handleEdit = (row: Agent) => {
   })
 }
 
-// 删除
 const handleDelete = async (row: Agent) => {
   try {
     await confirmDelete(`确定要删除 Agent "${row.name}" 吗？`, () => deleteAgent(row.id),
@@ -115,10 +117,8 @@ const handleDelete = async (row: Agent) => {
   } catch { /* 取消或失败 */ }
 }
 
-// 对话
 const handleChat = (row: Agent) => { window.location.href = `/chat?agentId=${row.id}` }
 
-// 提交表单
 const handleSubmit = async (formData: any, isEdit: boolean) => {
   try {
     dialogRef.value?.setLoading(true)
@@ -146,18 +146,7 @@ const handleSubmit = async (formData: any, isEdit: boolean) => {
 </script>
 
 <style scoped>
-.agent-list-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border-light); }
-.header-left { flex: 1; }
-.page-title { font-size: 24px; font-weight: 600; color: var(--text-primary); margin: 0 0 8px 0; }
-.page-desc { font-size: 14px; color: var(--text-secondary); margin: 0; }
-.header-right { flex-shrink: 0; }
-.action-btns { display: flex; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
+.agent-list-page { padding: 24px; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-5); }
+.action-btns { display: flex; gap: 2px; flex-wrap: nowrap; white-space: nowrap; }
 .text-gray { color: var(--text-secondary); }
-
-@media (max-width: 768px) {
-  .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .header-right { width: 100%; }
-  .header-right :deep(.el-button) { width: 100%; }
-}
 </style>
