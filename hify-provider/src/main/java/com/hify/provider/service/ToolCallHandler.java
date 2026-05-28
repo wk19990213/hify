@@ -25,7 +25,8 @@ public class ToolCallHandler {
     public void executeToolCalls(ProviderAdapter adapter, String llmResponse,
                                   List<ProviderAdapter.ToolCall> toolCalls,
                                   List<ToolDef> tools,
-                                  List<Map<String, Object>> messages) {
+                                  List<Map<String, Object>> messages,
+                                  String reasoningContent) {
         String assistantContent = adapter.extractContent(llmResponse);
         List<Map<String, Object>> tcMaps = new ArrayList<>();
         for (ProviderAdapter.ToolCall tc : toolCalls) {
@@ -38,6 +39,9 @@ public class ToolCallHandler {
         Map<String, Object> asstMsg = new LinkedHashMap<>();
         asstMsg.put("role", "assistant");
         asstMsg.put("content", assistantContent != null ? assistantContent : "");
+        if (reasoningContent != null) {
+            asstMsg.put("reasoning_content", reasoningContent);
+        }
         asstMsg.put("tool_calls", tcMaps);
         messages.add(asstMsg);
 

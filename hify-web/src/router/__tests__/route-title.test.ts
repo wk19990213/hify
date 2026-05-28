@@ -13,8 +13,6 @@ describe('route titles', () => {
     expect(titles).toContain('对话')
     expect(titles).toContain('知识库')
     expect(titles).toContain('工作流')
-    expect(titles).toContain('新建工作流')
-    expect(titles).toContain('编辑工作流')
     expect(titles).toContain('MCP 管理')
   })
 

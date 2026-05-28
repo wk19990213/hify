@@ -1,0 +1,557 @@
+{
+  "version": 1,
+  "skills": {
+    "api-design-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/api-design-ops/SKILL.md",
+      "computedHash": "953f496f3d5e9f04ede5a2d90911289eadb579e1e3a9e1f40eee9cc0e95562b6"
+    },
+    "astro-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/astro-ops/SKILL.md",
+      "computedHash": "788b5c6dae2de7cadadd9b7021419647d5667e7ac0ff081f02338bddf5e55dc7"
+    },
+    "atomise": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/atomise/SKILL.md",
+      "computedHash": "9e8447f99dad6bb55b9ac5d3ac27dca6e7e0e0c0ab6c28ec2e3fa00cac13ade7"
+    },
+    "auth-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/auth-ops/SKILL.md",
+      "computedHash": "c55079c06f4c6236d007f1174ebce297f43f79873d68a82a8da3613bc3cb0599"
+    },
+    "auto-skill": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/auto-skill/SKILL.md",
+      "computedHash": "baacbf7f95d8c322eac59e751d51f1fd394e89538afbd7346e13b91737ab794b"
+    },
+    "caveman": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/caveman/SKILL.md",
+      "computedHash": "536908fcfcb232600a5875aa85f1fd50fd13305e9d67379bcd95f07c8c916f3f"
+    },
+    "ci-cd-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/ci-cd-ops/SKILL.md",
+      "computedHash": "87c919fb225817c029a60d457e6994bb67314385220c741c58a5169ee0e30688"
+    },
+    "claude-code-debug": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/claude-code-debug/SKILL.md",
+      "computedHash": "443ad3b82edb60cc7a12300e0d91c7ba38b0e836c5f0c1f2b99610d8840c4934"
+    },
+    "claude-code-headless": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/claude-code-headless/SKILL.md",
+      "computedHash": "5114309d0816f01ace01188e14ec89cdf01d67e72761405a5f263add4fffb06f"
+    },
+    "claude-code-hooks": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/claude-code-hooks/SKILL.md",
+      "computedHash": "233e40626f33924c38aebfa68fd943259ed8038d114202c9c0b31ce9c0a82d9c"
+    },
+    "cli-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/cli-ops/SKILL.md",
+      "computedHash": "efe74ec092a72d7c77b045c8506a8d1ceb2cea11a52c45f003a4102f2517de65"
+    },
+    "code-stats": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/code-stats/SKILL.md",
+      "computedHash": "0fb1591e553e575cedd9319e8a16e11063bdfa4cab07e56507afbec0f0aae6cb"
+    },
+    "color-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/color-ops/SKILL.md",
+      "computedHash": "c201bd1a8c52d6e2f26da21424199d98815784eda4cf9cc743943857e0001ac2"
+    },
+    "container-orchestration": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/container-orchestration/SKILL.md",
+      "computedHash": "76778f92d0a636b50bbcf30bc8dec6d8a88d05c88edbe57bb2839faba581e262"
+    },
+    "data-processing": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/data-processing/SKILL.md",
+      "computedHash": "93e5247d17914c26b67e6c4e51c5c238cc3f92ea45eceeb6af758d6b74bbba07"
+    },
+    "debug-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/debug-ops/SKILL.md",
+      "computedHash": "c026579239fe053caed0b1dc911a7e04bbd57b8abd0a853c7b12bb0efeb9e340"
+    },
+    "diagnose": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnose/SKILL.md",
+      "computedHash": "1c3c85517ac42116fe5f2bfb5150f7b3e38ad23808e40b33fbb01f1afb611983"
+    },
+    "doc-scanner": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/doc-scanner/SKILL.md",
+      "computedHash": "f99647b1304148643e7a1eadc305ba3c3144963bba26a006cbe11106528b7ba7"
+    },
+    "docker-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/docker-ops/SKILL.md",
+      "computedHash": "e297ec85acbc6ca90449c21823baea67f819d9c20b4c2fa080000348f9e45901"
+    },
+    "explain": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/explain/SKILL.md",
+      "computedHash": "d5f8324c24b658f5f002d1a54245d32d7f62b334ab4e32872d3f1d2d55b21635"
+    },
+    "file-search": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/file-search/SKILL.md",
+      "computedHash": "cfb1bebbc530528c89fe76d89ac51e33ebd0ca19d33b0864c6440c882b4699da"
+    },
+    "find-replace": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/find-replace/SKILL.md",
+      "computedHash": "c06d90c1c83d6aac34fc1e918a0714a0b048da84c21185d0c2b4994e955ec3db"
+    },
+    "fleet-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/fleet-ops/SKILL.md",
+      "computedHash": "6d39cafbdda03e9ffd03801096b2cf89b83afdc85c267955e253bf200b5e4c03"
+    },
+    "genart-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/genart-ops/SKILL.md",
+      "computedHash": "4302b7a5de41db51948e9d8e59c5f8d8579025b12c8970cbbdd28aa767944c99"
+    },
+    "git-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/git-ops/SKILL.md",
+      "computedHash": "1e51065dd5763f2cf1afccb77bcbc9731915720e39d6313ad1d4a10a9742e8c4"
+    },
+    "github-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/github-ops/SKILL.md",
+      "computedHash": "d09c0c1e0b2f17712e420576bc0b5ac054d055ac9cc8b7302b32dd5fecf9758d"
+    },
+    "go-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/go-ops/SKILL.md",
+      "computedHash": "f6f173bd0a3cb619b0afb95723b6eb0b56a2a714f90023ed996268564ae4ddd5"
+    },
+    "grill-me": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grill-me/SKILL.md",
+      "computedHash": "daf64ca15f4fa081a6747766db538e2dbd1131725ed4fcdd3d538dc62c7035ba"
+    },
+    "grill-with-docs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
+      "computedHash": "59849672f8fce76b73055f6c9270236212e444c9aa63d02481bdf3cf788edb9f"
+    },
+    "handoff": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/handoff/SKILL.md",
+      "computedHash": "3fdffd9dce6fc3e9f9f756ba79d694c5f162e11c7e7fbc72a0958f204312e0b1"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "5d9444ffe5c240f2d20081c42c547112e1b8c372375a14e4c98df4d94bde11e1"
+    },
+    "introspect": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/introspect/SKILL.md",
+      "computedHash": "f5cddf761a63f8040d8d78f5bee83217ee88ac4765848b2470527998715c27fe"
+    },
+    "iterate": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/iterate/SKILL.md",
+      "computedHash": "06a419fe67f1f845f8d1198f2cd6135a3ed588ce627fab6f121b46c0ca9df051"
+    },
+    "javascript-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/javascript-ops/SKILL.md",
+      "computedHash": "e6e9368361a63bbd4c9915fbbaf028b0a412ce59050596117dd21a26f4d8e4fd"
+    },
+    "laravel-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/laravel-ops/SKILL.md",
+      "computedHash": "09457f99ee41282eb2b32805e7740f23e4d42e79d1d86c025505aa06673aeba9"
+    },
+    "leveldb-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/leveldb-ops/SKILL.md",
+      "computedHash": "5ec793e6163be02e8823bcc50075ca98185e6e03f4563146b15a1018dace72a4"
+    },
+    "log-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/log-ops/SKILL.md",
+      "computedHash": "ef068223510a7264ac183b52dcb97a9c65202ef1091c853d07b9800128847ac9"
+    },
+    "mac-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/mac-ops/SKILL.md",
+      "computedHash": "1645efb8eeb89d267c4b247d2073acbeb595c8573e240396433bec12739d5ad1"
+    },
+    "markitdown": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/markitdown/SKILL.md",
+      "computedHash": "bfccfbb34f1e168e9325f23aa755f522a27e186f54f310923ca6fd125765b1e7"
+    },
+    "mcp-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/mcp-ops/SKILL.md",
+      "computedHash": "ea8fce54180d403347ba1583820818ae40654b99604e296471d98dc27b87c9af"
+    },
+    "migrate-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/migrate-ops/SKILL.md",
+      "computedHash": "5df758b0517c20cdde0f2b30fefa6c5ae3746068ac18988859c14fc9ab3c0acf"
+    },
+    "monitoring-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/monitoring-ops/SKILL.md",
+      "computedHash": "7aa9235fa6e043a430e694fc3b250915a1959f2bb0657f4246d1225339abbb5b"
+    },
+    "net-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/net-ops/SKILL.md",
+      "computedHash": "08f6984db141549a9cd545c7d36dfdab288b02bdaad1164b6ae6eaf4184e4f8d"
+    },
+    "nginx-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/nginx-ops/SKILL.md",
+      "computedHash": "73c98eb6d70c5a062c9dd547016fd0ff58033458534ee31a6e09853dbd84dd0b"
+    },
+    "perf-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/perf-ops/SKILL.md",
+      "computedHash": "8fb7ee4235ea11d8f2017f6dc2acb96aaae3c88a08e23eb29eb643ff32bad585"
+    },
+    "pigeon": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/pigeon/SKILL.md",
+      "computedHash": "7ec6cf39cfa85250f96cdd5939ebd0bcf5fdb91435695fc0cc5d03b20bd0a51d"
+    },
+    "portless-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/portless-ops/SKILL.md",
+      "computedHash": "807b745a4e30626aa88818539b5f1712bed19369e6144d4db687230cd53554e0"
+    },
+    "postgres-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/postgres-ops/SKILL.md",
+      "computedHash": "e135e3c23403557f89609f7ca0c477746b1be07db9627ee213cc6258bc8ca8ef"
+    },
+    "process-compose-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/process-compose-ops/SKILL.md",
+      "computedHash": "7758f1e418f15dbcb5f139a47afd011f5d50976e97983569000254bc00c7e37b"
+    },
+    "project-planner": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/project-planner/SKILL.md",
+      "computedHash": "25e9d5b1a195deae69de68cb8438e548dc0c89d0cc677f0456b27c7a60e6ca64"
+    },
+    "prototype": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/prototype/SKILL.md",
+      "computedHash": "f52c019c3e0af2ad1807332d553b9ee7282a28c162d78cdeddd89dc8456b73ff"
+    },
+    "push-gate": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/push-gate/SKILL.md",
+      "computedHash": "f4468b0c08f878210492a55ee6f5d669f27e52b6bb973ec2b516334c6f98833a"
+    },
+    "python-async-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-async-ops/SKILL.md",
+      "computedHash": "70a7916dff7676ea9274a8e51c22c661f3c1b231e95f196c37a3b48750f0ba4d"
+    },
+    "python-cli-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-cli-ops/SKILL.md",
+      "computedHash": "1f8c50f722505abf7ce07daa5a7a55619755e4eede4cacdf5e2cd399744c38f6"
+    },
+    "python-database-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-database-ops/SKILL.md",
+      "computedHash": "b6543aaab43c913364cdb988614a4355986f892c46b08bb038e5864ff99bfd01"
+    },
+    "python-env": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-env/SKILL.md",
+      "computedHash": "324a95efdf2506d1f4657ffc3afb8b45ab76d885c1e43e4d6248b86187820d5c"
+    },
+    "python-fastapi-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-fastapi-ops/SKILL.md",
+      "computedHash": "577d3c0997f90233f58513aa5f56f52987a34b94a4a4935db35cc7925122e6fe"
+    },
+    "python-observability-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-observability-ops/SKILL.md",
+      "computedHash": "f81e3fdc693f07ae6f6bd0f3d2f8222e4b5b1c9033aa36ebc2c197f590c543d5"
+    },
+    "python-pytest-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-pytest-ops/SKILL.md",
+      "computedHash": "08ed9ca189924b6162292114ae0847b0c36c84843e33d4f88f3ae12067fb31b3"
+    },
+    "python-typing-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/python-typing-ops/SKILL.md",
+      "computedHash": "88d0adfbbd0033b74b9aa2cf50db13b1a226c46d4688af3dbe4767beeb8fdf46"
+    },
+    "react-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/react-ops/SKILL.md",
+      "computedHash": "a6c402ebb52d66b723e2f564028f5967127dd8256495cc9bae879c9545f42c0b"
+    },
+    "refactor-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/refactor-ops/SKILL.md",
+      "computedHash": "861c9bb1e39ab2bc62262d6f85a5917f219a9aa2ec1adcee7740ee62101f05e9"
+    },
+    "rest-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/rest-ops/SKILL.md",
+      "computedHash": "d854fc3ceab3b62d3962be327ad7eff1f5068caa6e02e57d388f07a0fa394b55"
+    },
+    "review": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/review/SKILL.md",
+      "computedHash": "c2344e6c8f085592f9d0c467f3a0016b655a06c4b2ad138ef8cb30b38ef5c29b"
+    },
+    "rust-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/rust-ops/SKILL.md",
+      "computedHash": "8d8662b634a72897e9a0308ac52edb6f77ead1a3a74f7d2465babe269e0c55ed"
+    },
+    "scaffold": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/scaffold/SKILL.md",
+      "computedHash": "2f4ee685a34770a5f305e9d274aa9b63425f5dcdb13c014a57c05d931ecf9940"
+    },
+    "screenshot": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/screenshot/SKILL.md",
+      "computedHash": "cc54615c4133ea699a0efffb679a0f1746aacd1fa81ad9875c426512d5eb3c2a"
+    },
+    "security-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/security-ops/SKILL.md",
+      "computedHash": "2f1c060a439ebe639a3ab274d9e239f066f53151aef0f859e22585a8235ad33f"
+    },
+    "setperms": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/setperms/SKILL.md",
+      "computedHash": "2a27a82d2e1a342570f398fe2a6440e1d63fa3b8fde3c57903fd138fc4fb11f9"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "computedHash": "f686b246e95afeaeeb3ff21b0f9f2c1ab29b02958468170cc9802fb477508488"
+    },
+    "skill-creator": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/skill-creator/SKILL.md",
+      "computedHash": "1461a4224215e0ef74a28bdc295563ee85d7e4e5d05579a347237aa1f5c7321b"
+    },
+    "spawn": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/spawn/SKILL.md",
+      "computedHash": "1e3bf502624a8d7750afed2ac3078cf37a790e00b2124087ce662ff0dbf97f90"
+    },
+    "sql-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/sql-ops/SKILL.md",
+      "computedHash": "55054dcd2c38d58a2f9e29be0156c90fc6b86a4101471f97ec1aec7af65ee8a7"
+    },
+    "sqlite-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/sqlite-ops/SKILL.md",
+      "computedHash": "e05c4fd9558c01ad8e7889ac82a7b2fe5bafb3a5c95d4284f3ad65d3cc599d9d"
+    },
+    "structural-search": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/structural-search/SKILL.md",
+      "computedHash": "b9454b656c549b0734649ce194d47c58c1c77eac98a5605138b8be5866c3a0f1"
+    },
+    "summon": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/summon/SKILL.md",
+      "computedHash": "e99f08a1ba585b45e696a6179fdee6aa299e40ba5563fc5964ac67d874c3c58d"
+    },
+    "tailwind-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/tailwind-ops/SKILL.md",
+      "computedHash": "2abd4806dd365f1bb6c3e109268399a3eff883a2196b35677ecbc38a6793d987"
+    },
+    "task-runner": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/task-runner/SKILL.md",
+      "computedHash": "14bfbcc72406dbe184618c9a97e917e9887bb0a03f120e60e42f82d1920b2302"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "78b31b2120c5fe7aced1cebfd4c7c94acb0037fd4f89c83c67584414aa4173bd"
+    },
+    "techdebt": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/techdebt/SKILL.md",
+      "computedHash": "bdcdb1ec466f66b02f3d3edf454402c6d8a44e8568e0a235e2558b7cc8a53203"
+    },
+    "testgen": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/testgen/SKILL.md",
+      "computedHash": "dd95b12c05a19d7e59e469b7668f6458886da0b8d5d06e8f4ccda74cd00fcd2d"
+    },
+    "testing-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/testing-ops/SKILL.md",
+      "computedHash": "1c80e43d59112b0a5c7850bb577b5b656de6169db15e7a9c02f9aefddedca9de"
+    },
+    "to-issues": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-issues/SKILL.md",
+      "computedHash": "41915d1686991b0d3796eb0b52f3aa8e9021abc5f268d14e6dc62e95dbf8e044"
+    },
+    "to-prd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-prd/SKILL.md",
+      "computedHash": "a80acb8760af6521a37ea4f079e617712fcaa800f8a766e247f815c5dabb20d2"
+    },
+    "tool-discovery": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/tool-discovery/SKILL.md",
+      "computedHash": "6d70f8b091fd7dc14103975b5245de64f83741b19978c8be20f9e3d4f5a1a6b2"
+    },
+    "triage": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/triage/SKILL.md",
+      "computedHash": "56ff15b41bbebfa4cb329d96150d9b297c1d919ce30784d883b8755b4bfd8e7e"
+    },
+    "typescript-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/typescript-ops/SKILL.md",
+      "computedHash": "0f0ce7e873f17c12afff8179a8a818953732a2d2afd4413eed74427557bf7a64"
+    },
+    "unfold-admin": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/unfold-admin/SKILL.md",
+      "computedHash": "84e2166c4e6579af97ade25aad9c94a5ff292ed274dde9ced2a59577197289e9"
+    },
+    "vue-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/vue-ops/SKILL.md",
+      "computedHash": "565539d544667a59780679da743f8d12f3af8d16df6c728bc3322121dfc20004"
+    },
+    "windows-ops": {
+      "source": "0xDarkMatter/claude-mods",
+      "sourceType": "github",
+      "skillPath": "skills/windows-ops/SKILL.md",
+      "computedHash": "dd8a5f98e5530dded16791a6dc11a877362893cfcd3f0b2cb6b212cdb2e7f4b5"
+    },
+    "write-a-skill": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/write-a-skill/SKILL.md",
+      "computedHash": "3b58a16bde08f84ed490cd449ecdc40289216d660e070c485f53bc2d1ed2b843"
+    },
+    "zoom-out": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/zoom-out/SKILL.md",
+      "computedHash": "a8b8ed45609fdfa9f184d0c9f69326e43822a42eebea14db2792d777373de562"
+    }
+  }
+}

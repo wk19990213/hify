@@ -6,7 +6,7 @@
 
 Hify 是简版 AI Agent 开发平台（参考 Dify），可本地部署，面向团队内部小规模使用（20-50 人）。
 
-**技术栈：** Spring Boot 3.x + MyBatis-Plus + MySQL 8.x + Redis 7.x + pgvector
+**技术栈：** Spring Boot 3.x + MyBatis-Plus + MySQL 8.x + Redis 7.x + pgvector，不允许私自改变依赖的版本，如果想要改变必须分析利弊，说出令人信服的理由
 **前端：** Vue 3 + TypeScript + Element Plus + Vite
 
 **做什么：** 多模型提供商管理 / Agent 创建与配置 / 对话引擎（流式 SSE）/ RAG 知识库 / 简版工作流编排 / MCP 工具接入 / 管理控制台
@@ -74,11 +74,24 @@ deploy/          # Docker + K8s 部署
 ## 工作原则
 
 - **Plan First** — 非 trivial 任务先写计划
+- **Skill First** — 当用户指令关键词匹配可用 Skill 时，必须调用 `Skill` 工具而非手动执行。尤其 TDD/测试/重构类任务，手动执行会偷懒跳过 RED 阶段，Skill 强制完整流程
 - **Simplicity First** — 最小改动，不引入不必要抽象
 - **Surgical Changes** — 只触碰必要的代码，匹配现有风格
 - **Goal-Driven** — 定义验证标准，循环直到通过
 
 > 原则详解 → `docs/principles.md`
+
+### Skill 触发映射
+
+| 关键词 | Skill |
+|--------|-------|
+| TDD、red-green、测试驱动、写测试、单元测试 | `tdd` 或 `test-driven-development` |
+| 重构、拆分大类、提取方法 | `refactor-ops` |
+| 代码审查、review | `code-review` 或 `review` |
+| 诊断、debug、排查 | `diagnose` 或 `systematic-debugging` |
+| 安全、漏洞、XSS、SQL注入 | `security-ops` |
+| 性能、优化、慢查询 | `perf-ops` |
+| 前端组件、Vue组件 | `vue-ops` |
 
 ## 文档索引
 
