@@ -102,4 +102,4 @@ deploy/          # Docker + K8s 部署
 | `docs/security.md` | SSRF/SQL注入/XSS/事务/文件上传/加密安全 |
 | `docs/lessons.md` | 常见问题与教训（MCP绑定、类型转换、编译顺序等） |
 | `docs/principles.md` | 四大工作原则详解 + Workflow Orchestration |
-| `.claude/techdebt-rules.json` | 死代码扫描跳过规则 |
+| `.Codex/techdebt-rules.json` | 死代码扫描跳过规则 |

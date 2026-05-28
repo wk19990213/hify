@@ -6,9 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hify.common.util.JsonUtils;
 import com.hify.common.util.TemplateVariableResolver;
 import com.hify.provider.util.AuthConfigHelper;
-import com.hify.mcp.mcp.McpClientManager;
 import com.hify.mcp.mcp.ToolDef;
-import com.hify.mcp.mcp.ToolResult;
 import com.hify.provider.adapter.ChatRequest;
 import com.hify.provider.adapter.ProviderAdapter;
 import com.hify.provider.adapter.ProviderAdapterFactory;
@@ -17,6 +15,7 @@ import com.hify.provider.entity.ProviderEntity;
 
 import com.hify.provider.mapper.ModelConfigMapper;
 import com.hify.provider.service.ProviderDiscoveryService;
+import com.hify.provider.service.ToolCallHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -32,7 +31,7 @@ public class LlmNodeExecutor implements NodeExecutor {
     private final ProviderDiscoveryService providerDiscoveryService;
     private final ProviderAdapterFactory adapterFactory;
     private final ObjectMapper objectMapper;
-    private final McpClientManager mcpClientManager;
+    private final ToolCallHandler toolCallHandler;
 
     @Override
     public String getType() {
@@ -97,35 +96,12 @@ public class LlmNodeExecutor implements NodeExecutor {
                 List<ProviderAdapter.ToolCall> toolCalls =
                         adapter.extractToolCalls(lastResponse);
 
-                if (toolCalls.isEmpty()) {
+                if (toolCalls == null || toolCalls.isEmpty()) {
                     break;
                 }
 
-                // 追加 assistant 消息（含 tool_calls）
-                List<Map<String, Object>> tcMaps = new ArrayList<>();
-                for (ProviderAdapter.ToolCall tc : toolCalls) {
-                    Map<String, Object> func = new LinkedHashMap<>();
-                    func.put("name", tc.getName());
-                    func.put("arguments", JsonUtils.toJson(tc.getArguments()));
-                    tcMaps.add(Map.of("id", tc.getId() != null ? tc.getId() : "",
-                            "type", "function", "function", func));
-                }
-                Map<String, Object> asstMsg = new LinkedHashMap<>();
-                asstMsg.put("role", "assistant");
-                asstMsg.put("content", lastContent != null ? lastContent : "");
-                asstMsg.put("tool_calls", tcMaps);
-                messages.add(asstMsg);
-
-                for (ProviderAdapter.ToolCall tc : toolCalls) {
-                    ToolResult tr = executeToolCall(tc, tools);
-                    Map<String, Object> toolMsg = new LinkedHashMap<>();
-                    toolMsg.put("role", "tool");
-                    toolMsg.put("tool_call_id", tc.getId() != null ? tc.getId() : "");
-                    toolMsg.put("content",
-                            tr.isSuccess() ? tr.getContent()
-                                    : "Error: " + tr.getError());
-                    messages.add(toolMsg);
-                }
+                toolCallHandler.executeToolCalls(adapter, lastResponse, toolCalls,
+                        tools, messages, null);
 
                 if (lastContent != null && !lastContent.isBlank()) {
                     break;
@@ -151,27 +127,6 @@ public class LlmNodeExecutor implements NodeExecutor {
         Boolean enabled = (Boolean) config.get("toolsEnabled");
         if (!Boolean.TRUE.equals(enabled)) return null;
         return allTools;
-    }
-
-    private ToolResult executeToolCall(ProviderAdapter.ToolCall tc,
-                                        List<ToolDef> tools) {
-        if (tools == null || tools.isEmpty()) {
-            ToolResult r = new ToolResult();
-            r.setSuccess(false);
-            r.setError("没有可用的工具");
-            return r;
-        }
-        ToolDef def = tools.stream()
-                .filter(t -> t.getName().equals(tc.getName()))
-                .findFirst().orElse(null);
-        if (def == null || def.getServerId() == null) {
-            ToolResult r = new ToolResult();
-            r.setSuccess(false);
-            r.setError("未找到工具: " + tc.getName());
-            return r;
-        }
-        return mcpClientManager.callTool(def.getServerId(), tc.getName(),
-                tc.getArguments());
     }
 
     private ProviderEntity findProvider(String modelId) {

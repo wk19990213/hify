@@ -28,4 +28,24 @@ class ToolCallHandlerTest {
         }
         assertTrue(found, "ToolCallHandler should have executeToolCalls method");
     }
+
+    @Test
+    void testExecuteToolCallsHasReasoningContentParam() throws ClassNotFoundException, NoSuchMethodException {
+        Class<?> clazz = Class.forName("com.hify.provider.service.ToolCallHandler");
+        boolean found = false;
+        for (Method m : clazz.getDeclaredMethods()) {
+            if ("executeToolCalls".equals(m.getName())) {
+                for (Class<?> p : m.getParameterTypes()) {
+                    if (String.class.equals(p)) {
+                        // Check last param is String reasoningContent
+                        Class<?>[] params = m.getParameterTypes();
+                        if (params.length >= 6 && String.class.equals(params[5])) {
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(found, "executeToolCalls should accept String reasoningContent as 6th parameter");
+    }
 }

@@ -1,0 +1,12 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CAVEMAN_DEFAULT_MODE = "ultra"
+
+[mcp_servers.caveman-shrink]
+command = "npx"
+args = [
+    "-y",
+    "caveman-shrink",
+]

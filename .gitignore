@@ -33,6 +33,9 @@ docs/
 prd.json
 skills-lock.json
 tech-debt-todo.md
+techdebt-prd.json
+restart-backend.sh
+plan/
 eslint.config.js
 
 # OS
